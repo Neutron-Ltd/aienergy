@@ -10,9 +10,10 @@ import re
 warnings.filterwarnings('ignore')
 
 # --- CONFIGURATION ---
-TARGET_DATE = "260203"       # Feb 2nd, 2026
-REPORT_FILE = f"Report-20{TARGET_DATE}.html"
-EXPECTED_FREQ = '15min'      # Expected report interval
+TARGET_DATE = "260203"       # Feb 3rd, 2026
+REPORT_FILE = f"Frequency-20{TARGET_DATE}.html"
+EXPECTED_FREQ_MIN = 15       # Expected interval in minutes
+EXPECTED_COUNT = int((24 * 60) / EXPECTED_FREQ_MIN) # 96 records
 # ---------------------
 
 db_config = {
@@ -28,12 +29,11 @@ HTML_TEMPLATE = """
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Meter Health Report: 20{date}</title>
+    <title>Meter Frequency Report: 20{date}</title>
     <style>
         body {{ font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f4f6f9; margin: 0; padding: 20px; color: #333; }}
         .container {{ max-width: 1200px; margin: 0 auto; background: white; padding: 30px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }}
         h1 {{ color: #2c3e50; border-bottom: 2px solid #eee; padding-bottom: 10px; }}
-        h2 {{ color: #34495e; margin-top: 30px; }}
         
         .summary-grid {{ display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; margin-bottom: 30px; }}
         .card {{ background: #fff; border: 1px solid #ddd; padding: 20px; border-radius: 8px; text-align: center; }}
@@ -59,58 +59,51 @@ HTML_TEMPLATE = """
 </head>
 <body>
     <div class="container">
-        <h1>📊 Daily Meter Health Report: 20{date}</h1>
+        <h1>📊 Meter Frequency Report: 20{date}</h1>
+        <p>Target: <strong>{target_count} records</strong> per day (Every {freq} mins)</p>
         
         <div class="summary-grid">
             <div class="card"><h3>{total}</h3><p>Total Meters</p></div>
-            <div class="card danger"><h3>{dead}</h3><p>Dead (Offline)</p></div>
-            <div class="card warning"><h3>{gaps}</h3><p>Unstable</p></div>
-            <div class="card success"><h3>{perfect}</h3><p>Perfect Score</p></div>
+            <div class="card danger"><h3>{dead}</h3><p>Dead (0 Data)</p></div>
+            <div class="card warning"><h3>{low_perf}</h3><p>Low Performance</p></div>
+            <div class="card success"><h3>{perfect}</h3><p>Perfect Count</p></div>
         </div>
 
-        <h2>🔴 Dead Meters (Critical Action Required)</h2>
-        <p>These devices sent <strong>zero data</strong> for the entire day.</p>
-        {dead_table}
-
-        <h2>⚠️ Performance & Gap Analysis</h2>
-        <p>Sorted by lowest uptime first. (Expected Frequency: {freq})</p>
+        <h2>⚠️ Performance Analysis (Sorted by Uptime)</h2>
         {gap_table}
     </div>
 </body>
 </html>
 """
 
-def analyze_gaps_consecutive(series, freq_str):
-    # Extract integer minutes from freq string (e.g. '15min' -> 15)
-    # This prevents the hardcoded multiplication error
-    try:
-        interval_minutes = int(re.search(r'\d+', freq_str).group())
-    except:
-        interval_minutes = 5 # Fallback safety
+def analyze_meter_count(series):
+    # 1. Count actual records
+    actual_count = len(series)
+    
+    # 2. Calculate Uptime % based on Target
+    uptime = (actual_count / EXPECTED_COUNT) * 100
+    if uptime > 100: uptime = 100 # Cap at 100% visually
+    
+    # 3. Calculate Average Insert Delay (Interval)
+    if actual_count > 1:
+        # Calculate time difference between consecutive rows
+        deltas = series.sort_values().diff()
+        
+        # Get Mean interval
+        mean_delta = deltas.mean()
+        
+        # Format nicely (e.g. "15m 30s")
+        total_seconds = mean_delta.total_seconds()
+        mins = int(total_seconds // 60)
+        secs = int(total_seconds % 60)
+        avg_delay_str = f"{mins}m {secs}s"
+    else:
+        avg_delay_str = "N/A"
 
-    # Create perfect index
-    start_of_day = series.index.min().replace(hour=0, minute=0, second=0)
-    end_of_day = series.index.min().replace(hour=23, minute=59, second=59)
-    full_index = pd.date_range(start=start_of_day, end=end_of_day, freq=freq_str)
-    
-    # Reindex
-    reindexed = series.reindex(full_index)
-    is_missing = reindexed.isnull()
-    
-    total_missing = is_missing.sum()
-    total_slots = len(full_index)
-    uptime = ((total_slots - total_missing) / total_slots) * 100
-    
-    gap_blocks = (is_missing != is_missing.shift()).cumsum()
-    gap_sizes = is_missing.groupby(gap_blocks).sum()
-    
-    # FIXED: Multiply by actual interval_minutes, not hardcoded 5
-    longest_gap_min = gap_sizes.max() * interval_minutes if not gap_sizes.empty else 0
-    
-    return total_missing, longest_gap_min, uptime
+    return actual_count, uptime, avg_delay_str
 
 def generate_report():
-    print(f"--- Generating HTML Report for {TARGET_DATE} (Freq: {EXPECTED_FREQ}) ---")
+    print(f"--- Generating Report for {TARGET_DATE} (Target: {EXPECTED_COUNT} records) ---")
     
     try:
         conn = mysql.connector.connect(**db_config)
@@ -132,9 +125,10 @@ def generate_report():
     grouped = all_data.groupby('meter_number')
     meters_with_data = set(grouped.groups.keys())
 
-    dead_list = []
-    gap_list = []
+    stats_list = []
+    dead_count = 0
     perfect_count = 0
+    low_perf_count = 0
 
     print("Analyzing meters...")
 
@@ -143,78 +137,99 @@ def generate_report():
         m_name = row['meter_name']
         m_mac = row['mac_address']
         
+        # DEAD METERS
         if m_id not in meters_with_data:
-            dead_list.append({'id': m_id, 'name': m_name, 'mac': m_mac})
-            continue
-
-        ts_series = grouped.get_group(m_id).set_index('ts')['meter_number']
-        
-        # FIXED: Passing EXPECTED_FREQ here!
-        missing_count, max_gap_min, uptime = analyze_gaps_consecutive(ts_series, EXPECTED_FREQ)
-        
-        if missing_count > 0:
-            gap_list.append({
+            stats_list.append({
                 'id': m_id,
                 'name': m_name,
-                'uptime': round(uptime, 2),
-                'gap_min': int(max_gap_min)
+                'count': 0,
+                'uptime': 0.0,
+                'avg_delay': 'OFFLINE'
             })
-        else:
+            dead_count += 1
+            continue
+
+        # ACTIVE METERS
+        ts_series = grouped.get_group(m_id)['ts']
+        actual_count, uptime, avg_delay = analyze_meter_count(ts_series)
+        
+        stats_list.append({
+            'id': m_id,
+            'name': m_name,
+            'count': actual_count,
+            'uptime': round(uptime, 1),
+            'avg_delay': avg_delay
+        })
+        
+        if uptime >= 98.0:
             perfect_count += 1
+        elif uptime > 0:
+            low_perf_count += 1
 
-    # Sort Gaps (Worst first)
-    gap_list.sort(key=lambda x: x['uptime'])
+    # Sort by Uptime (Lowest first)
+    stats_list.sort(key=lambda x: x['uptime'])
 
-    # --- GENERATE HTML TABLES ---
+    # --- GENERATE HTML TABLE ---
+    table_rows = ""
+    for m in stats_list:
+        # Colors
+        if m['uptime'] == 0: 
+            color = "#e74c3c" # Red
+            badge = "<span class='badge bg-red'>OFFLINE</span>"
+        elif m['uptime'] < 90: 
+            color = "#f39c12" # Orange
+            badge = "<span class='badge bg-orange'>LOW</span>"
+        else: 
+            color = "#27ae60" # Green
+            badge = "<span class='badge bg-green'>OK</span>"
+
+        # Highlight count if it matches target
+        count_display = f"<b>{m['count']}</b>"
+        if m['count'] < EXPECTED_COUNT:
+            count_display = f"<span style='color:#e74c3c'><b>{m['count']}</b></span>"
+
+        table_rows += f"""
+        <tr>
+            <td><b>{m['id']}</b></td>
+            <td>{m['name']}</td>
+            <td>
+                <div style="display:flex; align-items:center;">
+                    <div class="progress-bg"><div class="progress-fill" style="width:{m['uptime']}%; background-color:{color};"></div></div>
+                    <strong>{m['uptime']}%</strong>
+                </div>
+            </td>
+            <td>{count_display} / {EXPECTED_COUNT}</td>
+            <td>{m['avg_delay']}</td>
+            <td>{badge}</td>
+        </tr>
+        """
     
-    # 1. Dead Table
-    if dead_list:
-        dead_rows = ""
-        for m in dead_list:
-            dead_rows += f"<tr><td><b>{m['id']}</b></td><td>{m['name']}</td><td><code>{m['mac']}</code></td><td><span class='badge bg-red'>OFFLINE</span></td></tr>"
-        dead_html = f"<table><thead><tr><th>ID</th><th>Name</th><th>MAC Address</th><th>Status</th></tr></thead><tbody>{dead_rows}</tbody></table>"
-    else:
-        dead_html = "<p><i>No dead meters found. Great job!</i></p>"
-
-    # 2. Gap Table
-    if gap_list:
-        gap_rows = ""
-        for m in gap_list:
-            if m['uptime'] < 50: color = "#e74c3c"
-            elif m['uptime'] < 90: color = "#f39c12"
-            else: color = "#27ae60"
-
-            hours = m['gap_min'] // 60
-            mins = m['gap_min'] % 60
-            time_str = f"{hours}h {mins}m" if hours > 0 else f"{mins} min"
-
-            gap_rows += f"""
+    html_table = f"""
+    <table>
+        <thead>
             <tr>
-                <td><b>{m['id']}</b></td>
-                <td>{m['name']}</td>
-                <td>
-                    <div style="display:flex; align-items:center;">
-                        <div class="progress-bg"><div class="progress-fill" style="width:{m['uptime']}%; background-color:{color};"></div></div>
-                        <strong>{m['uptime']}%</strong>
-                    </div>
-                </td>
-                <td>{time_str}</td>
+                <th>ID</th>
+                <th>Name</th>
+                <th>Uptime (Based on Count)</th>
+                <th>Records (Actual / Target)</th>
+                <th>Avg Insert Interval</th>
+                <th>Status</th>
             </tr>
-            """
-        gap_html = f"<table><thead><tr><th>ID</th><th>Name</th><th>Uptime %</th><th>Longest Downtime</th></tr></thead><tbody>{gap_rows}</tbody></table>"
-    else:
-        gap_html = "<p><i>No unstable meters found.</i></p>"
+        </thead>
+        <tbody>{table_rows}</tbody>
+    </table>
+    """
 
     # --- FILL TEMPLATE ---
     final_html = HTML_TEMPLATE.format(
         date=TARGET_DATE,
-        freq=EXPECTED_FREQ,
+        freq=EXPECTED_FREQ_MIN,
+        target_count=EXPECTED_COUNT,
         total=len(meters_df),
-        dead=len(dead_list),
-        gaps=len(gap_list),
+        dead=dead_count,
+        low_perf=low_perf_count,
         perfect=perfect_count,
-        dead_table=dead_html,
-        gap_table=gap_html
+        gap_table=html_table
     )
 
     with open(REPORT_FILE, "w", encoding="utf-8") as f:
