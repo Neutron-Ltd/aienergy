@@ -10,10 +10,10 @@ import re
 warnings.filterwarnings('ignore')
 
 # --- CONFIGURATION ---
-TARGET_DATE = "260203"       # Feb 3rd, 2026
+TARGET_DATE = "260206"       # YYMMDD (Feb 3rd, 2026)
 REPORT_FILE = f"Frequency-20{TARGET_DATE}.html"
 EXPECTED_FREQ_MIN = 15       # Expected interval in minutes
-EXPECTED_COUNT = int((24 * 60) / EXPECTED_FREQ_MIN) # 96 records
+EXPECTED_COUNT = int((24 * 60) / EXPECTED_FREQ_MIN) # Target: 96 records
 # ---------------------
 
 db_config = {
@@ -32,7 +32,7 @@ HTML_TEMPLATE = """
     <title>Meter Frequency Report: 20{date}</title>
     <style>
         body {{ font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f4f6f9; margin: 0; padding: 20px; color: #333; }}
-        .container {{ max-width: 1200px; margin: 0 auto; background: white; padding: 30px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }}
+        .container {{ max-width: 1400px; margin: 0 auto; background: white; padding: 30px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }}
         h1 {{ color: #2c3e50; border-bottom: 2px solid #eee; padding-bottom: 10px; }}
         
         .summary-grid {{ display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; margin-bottom: 30px; }}
@@ -43,9 +43,9 @@ HTML_TEMPLATE = """
         .card.warning {{ border-left: 5px solid #f39c12; }}
         .card.success {{ border-left: 5px solid #27ae60; }}
 
-        table {{ width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 14px; }}
+        table {{ width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 13px; }}
         th {{ background-color: #f8f9fa; color: #2c3e50; padding: 12px; text-align: left; border-bottom: 2px solid #dee2e6; }}
-        td {{ padding: 12px; border-bottom: 1px solid #eee; }}
+        td {{ padding: 10px; border-bottom: 1px solid #eee; }}
         tr:hover {{ background-color: #f1f1f1; }}
 
         .badge {{ padding: 5px 10px; border-radius: 4px; font-weight: bold; font-size: 11px; display: inline-block; min-width: 60px; text-align: center; }}
@@ -53,8 +53,10 @@ HTML_TEMPLATE = """
         .bg-orange {{ background-color: #fff8e1; color: #f39c12; }}
         .bg-green {{ background-color: #e8f8f5; color: #27ae60; }}
 
-        .progress-bg {{ background-color: #eee; border-radius: 10px; height: 8px; width: 100px; display: inline-block; margin-right: 10px; }}
+        .progress-bg {{ background-color: #eee; border-radius: 10px; height: 8px; width: 80px; display: inline-block; margin-right: 10px; }}
         .progress-fill {{ height: 100%; border-radius: 10px; }}
+        
+        .time-col {{ font-family: monospace; color: #555; }}
     </style>
 </head>
 <body>
@@ -80,30 +82,43 @@ def analyze_meter_count(series):
     # 1. Count actual records
     actual_count = len(series)
     
-    # 2. Calculate Uptime % based on Target
+    # 2. Get Start/End Times
+    if actual_count > 0:
+        start_str = series.min().strftime('%H:%M:%S')
+        end_str = series.max().strftime('%H:%M:%S')
+    else:
+        start_str = "-"
+        end_str = "-"
+
+    # 3. Calculate Uptime % based on Target
     uptime = (actual_count / EXPECTED_COUNT) * 100
-    if uptime > 100: uptime = 100 # Cap at 100% visually
+    if uptime > 100: uptime = 100 
     
-    # 3. Calculate Average Insert Delay (Interval)
+    # 4. Calculate Average Insert Delay
     if actual_count > 1:
-        # Calculate time difference between consecutive rows
-        deltas = series.sort_values().diff()
+        start_time = series.min()
+        end_time = series.max()
+        duration_seconds = (end_time - start_time).total_seconds()
         
-        # Get Mean interval
-        mean_delta = deltas.mean()
+        avg_seconds = duration_seconds / (actual_count - 1)
         
-        # Format nicely (e.g. "15m 30s")
-        total_seconds = mean_delta.total_seconds()
-        mins = int(total_seconds // 60)
-        secs = int(total_seconds % 60)
+        mins = int(avg_seconds // 60)
+        secs = int(avg_seconds % 60)
         avg_delay_str = f"{mins}m {secs}s"
     else:
         avg_delay_str = "N/A"
 
-    return actual_count, uptime, avg_delay_str
+    return actual_count, uptime, avg_delay_str, start_str, end_str
 
 def generate_report():
     print(f"--- Generating Report for {TARGET_DATE} (Target: {EXPECTED_COUNT} records) ---")
+    
+    # Date Filtering Logic
+    year = "20" + TARGET_DATE[0:2]
+    month = TARGET_DATE[2:4]
+    day = TARGET_DATE[4:6]
+    full_date_str = f"{year}-{month}-{day}"
+    print(f"Filtering Data Range: {full_date_str} 00:00:00 to 23:59:59")
     
     try:
         conn = mysql.connector.connect(**db_config)
@@ -112,7 +127,14 @@ def generate_report():
         
         table_name = f"site_power_{TARGET_DATE}"
         print(f"Reading logs from {table_name}...")
-        query = f"SELECT meter_number, ts FROM {table_name}"
+        
+        # Strict Query
+        query = f"""
+            SELECT meter_number, ts 
+            FROM {table_name}
+            WHERE ts >= '{full_date_str} 00:00:00'
+            AND ts <= '{full_date_str} 23:59:59'
+        """
         all_data = pd.read_sql(query, conn)
         conn.close()
         
@@ -135,7 +157,6 @@ def generate_report():
     for index, row in meters_df.iterrows():
         m_id = row['meter_number']
         m_name = row['meter_name']
-        m_mac = row['mac_address']
         
         # DEAD METERS
         if m_id not in meters_with_data:
@@ -144,21 +165,25 @@ def generate_report():
                 'name': m_name,
                 'count': 0,
                 'uptime': 0.0,
-                'avg_delay': 'OFFLINE'
+                'avg_delay': 'OFFLINE',
+                'start': '-',
+                'end': '-'
             })
             dead_count += 1
             continue
 
         # ACTIVE METERS
         ts_series = grouped.get_group(m_id)['ts']
-        actual_count, uptime, avg_delay = analyze_meter_count(ts_series)
+        actual_count, uptime, avg_delay, start_time, end_time = analyze_meter_count(ts_series)
         
         stats_list.append({
             'id': m_id,
             'name': m_name,
             'count': actual_count,
             'uptime': round(uptime, 1),
-            'avg_delay': avg_delay
+            'avg_delay': avg_delay,
+            'start': start_time,
+            'end': end_time
         })
         
         if uptime >= 98.0:
@@ -183,7 +208,7 @@ def generate_report():
             color = "#27ae60" # Green
             badge = "<span class='badge bg-green'>OK</span>"
 
-        # Highlight count if it matches target
+        # Highlight count
         count_display = f"<b>{m['count']}</b>"
         if m['count'] < EXPECTED_COUNT:
             count_display = f"<span style='color:#e74c3c'><b>{m['count']}</b></span>"
@@ -200,6 +225,8 @@ def generate_report():
             </td>
             <td>{count_display} / {EXPECTED_COUNT}</td>
             <td>{m['avg_delay']}</td>
+            <td class="time-col">{m['start']}</td>
+            <td class="time-col">{m['end']}</td>
             <td>{badge}</td>
         </tr>
         """
@@ -211,8 +238,10 @@ def generate_report():
                 <th>ID</th>
                 <th>Name</th>
                 <th>Uptime (Based on Count)</th>
-                <th>Records (Actual / Target)</th>
-                <th>Avg Insert Interval</th>
+                <th>Records</th>
+                <th>Avg Interval</th>
+                <th>First Seen</th>
+                <th>Last Seen</th>
                 <th>Status</th>
             </tr>
         </thead>
