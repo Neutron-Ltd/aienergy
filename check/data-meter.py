@@ -11,10 +11,14 @@ import base64
 warnings.filterwarnings('ignore')
 
 # --- CONFIGURATION ---
-TARGET_METER_ID = 49
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+DATA_DIR = os.path.join(SCRIPT_DIR, "data")
+os.makedirs(DATA_DIR, exist_ok=True)
+
+TARGET_METER_ID = 197
 TARGET_DATE_SUFFIX = "260202"      # Table suffix (YYMMDD)
 FULL_DATE_STR = "2026-02-02"       # For strict SQL filtering (YYYY-MM-DD)
-REPORT_FILE = f"Meter-{TARGET_METER_ID}-{TARGET_DATE_SUFFIX}.html"
+REPORT_FILE = os.path.join(DATA_DIR, f"Meter-{TARGET_METER_ID}-{TARGET_DATE_SUFFIX}.html")
 # ---------------------
 
 db_config = {

@@ -11,7 +11,7 @@ warnings.filterwarnings('ignore')
 
 # --- CONFIGURATION ---
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-TARGET_DATE = "260201"       # YYMMDD (Feb 3rd, 2026)
+TARGET_DATE = "260202"       # YYMMDD (Feb 3rd, 2026)
 REPORT_FILE = os.path.join(SCRIPT_DIR, "daily", f"Frequency-20{TARGET_DATE}.html")
 EXPECTED_FREQ_MIN = 15       # Expected interval in minutes
 EXPECTED_COUNT = int((24 * 60) / EXPECTED_FREQ_MIN) # Target: 96 records

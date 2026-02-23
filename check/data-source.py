@@ -8,9 +8,13 @@ import os
 warnings.filterwarnings('ignore')
 
 # --- CONFIGURATION ---
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+DATA_DIR = os.path.join(SCRIPT_DIR, "data")
+os.makedirs(DATA_DIR, exist_ok=True)
+
 TARGET_ID = 1               # The Utility Source Meter
 TARGET_DATE = "260203"      # Feb 3rd, 2026
-REPORT_FILE = f"Source-Energy-ID{TARGET_ID}.html"
+REPORT_FILE = os.path.join(DATA_DIR, f"Source-Energy-ID{TARGET_ID}.html")
 # ---------------------
 
 db_config = {
