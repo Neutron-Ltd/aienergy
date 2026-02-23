@@ -9,10 +9,14 @@ from datetime import datetime, timedelta
 warnings.filterwarnings('ignore')
 
 # --- CONFIGURATION ---
-START_DATE_STR = "2026-02-02"   # YYYY-MM-DD (Monday)
+START_DATE_STR = "2026-02-01"   # YYYY-MM-DD (Monday)
 DAYS_TO_ANALYZE = 7             # 1 Week
 EXPECTED_DAILY_COUNT = 96       # 15 min intervals
 EXCLUDED_METER_IDS = {1}        # 1 = 电网计量表 (main grid input table, not a meter)
+# Meter IDs for special handling (excluded from facility consumption sum)
+GRID_METER_ID = 1
+SOLAR_METER_IDS = {29, 31, 56}  # PV generation meters
+STORAGE_METER_ID = 30           # Energy storage
 # ---------------------
 
 db_config = {
@@ -64,15 +68,17 @@ HTML_TEMPLATE = """
         .bg-green {{ background: #d5f5e3; color: #1eb866; }}
         .bg-red {{ background: #fadbd8; color: #e74c3c; }}
 
-        .energy-comparison {{ margin-top: 30px; padding: 20px; background: #f8f9fa; border-radius: 8px; border: 1px solid #dee2e6; }}
-        .energy-comparison h2 {{ margin-top: 0; color: #2c3e50; border-left: 5px solid #2980b9; padding-left: 10px; }}
-        .energy-grid {{ display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; margin: 20px 0; }}
-        .energy-card {{ background: white; border: 1px solid #ddd; padding: 15px; border-radius: 8px; text-align: center; }}
-        .energy-card h3 {{ margin: 0; font-size: 28px; color: #2c3e50; }}
-        .energy-card p {{ margin: 5px 0 0; color: #7f8c8d; font-size: 11px; font-weight: bold; text-transform: uppercase; }}
-        .energy-card.source {{ border-left: 5px solid #2980b9; }}
-        .energy-card.meters {{ border-left: 5px solid #27ae60; }}
-        .energy-card.diff {{ border-left: 5px solid #e67e22; }}
+        .energy-comparison {{ margin-top: 30px; padding: 20px; background: #fff; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.05); }}
+        .energy-comparison h2 {{ margin-top: 0; color: #2c3e50; padding-bottom: 10px; border-bottom: 2px solid #eee; }}
+        .energy-grid {{ display: grid; grid-template-columns: repeat(7, 1fr); gap: 15px; margin-top: 20px; }}
+        .energy-card {{ background: #f8f9fa; border: 1px solid #e9ecef; padding: 20px 10px; border-radius: 8px; text-align: center; display: flex; flex-direction: column; justify-content: center; }}
+        .energy-card h3 {{ margin: 0; font-size: 20px; color: #2c3e50; font-weight: 700; }}
+        .energy-card p {{ margin: 8px 0 0; color: #7f8c8d; font-size: 11px; font-weight: 700; text-transform: uppercase; line-height: 1.3; }}
+        .energy-card.supply {{ border-top: 4px solid #3498db; }}
+        .energy-card.accounted {{ border-top: 4px solid #2ecc71; }}
+        .energy-card.loss {{ border-top: 4px solid #e74c3c; background-color: #fdf2f0; }}
+        .energy-card.loss h3 {{ color: #c0392b; }}
+        .math-sign {{ display: flex; align-items: center; justify-content: center; font-size: 24px; color: #bdc3c7; font-weight: bold; }}
         .energy-unavailable {{ color: #95a5a6; font-style: italic; padding: 15px; }}
     </style>
 </head>
@@ -169,17 +175,78 @@ def fetch_weekly_data(start_date, meters_df):
     conn.close()
     return weekly_data
 
-def fetch_weekly_energy(start_date, meter_ids):
+def _integrate_power_to_kwh(rows):
     """
-    Fetch source (ID 1) and meters total energy for each day; aggregate over 7 days.
-    Returns (energy_source_kwh, energy_meters_kwh) or (None, None) if unavailable.
+    Integrate power (Pt, kW) over time. rows = list of dicts with meter_number, ts, Pt.
+    Returns (solar_kwh, storage_charge, storage_discharge).
     """
-    energy_source_total = 0.0
-    energy_meters_total = 0.0
+    solar_kwh = 0.0
+    storage_charge = 0.0
+    storage_discharge = 0.0
+    prev = {}  # mid -> {ts, Pt}
+
+    for row in rows:
+        mid = row['meter_number']
+        ts = row['ts']
+        pt = row['Pt'] if row.get('Pt') is not None else 0.0
+
+        if mid in prev:
+            delta_seconds = (ts - prev[mid]['ts']).total_seconds()
+            if delta_seconds > 0:
+                interval_hours = delta_seconds / 3600.0
+                interval_kwh = prev[mid]['Pt'] * interval_hours
+
+                if mid in SOLAR_METER_IDS:
+                    solar_kwh += abs(interval_kwh)
+                elif mid == STORAGE_METER_ID:
+                    if prev[mid]['Pt'] > 0:
+                        storage_charge += interval_kwh
+                    else:
+                        storage_discharge += abs(interval_kwh)
+
+        prev[mid] = {'ts': ts, 'Pt': pt}
+
+    return solar_kwh, storage_charge, storage_discharge
+
+
+def fetch_weekly_energy(start_date, meters_df):
+    """
+    Fetch energy metrics for the week.
+    - Grid & Facility: from site_energy_* (ImpEP/ExpEP)
+    - Solar (29,31,56) & Storage (30): from site_power_* via Pt integration (energy registers broken)
+    Returns dict: grid_import, grid_export, solar_kwh, storage_charge, storage_discharge, facility_consumption
+    """
     conn = mysql.connector.connect(**db_config)
-    cursor = conn.cursor()
+    cursor = conn.cursor(dictionary=True)
+
+    try:
+        meter_info_df = pd.read_sql(
+            "SELECT meter_number, parent_meter_number FROM meter_info",
+            conn
+        )
+    except Exception:
+        conn.close()
+        return None
+
+    parent_numbers = set(
+        int(x) for x in meter_info_df['parent_meter_number'].dropna().astype(int).tolist()
+        if x != 0
+    )
+    all_meter_numbers = set(meter_info_df['meter_number'].tolist())
+    terminal_meter_ids = all_meter_numbers - parent_numbers
+    facility_meter_ids = terminal_meter_ids - {GRID_METER_ID} - SOLAR_METER_IDS - {STORAGE_METER_ID}
+
+    result = {
+        'grid_import': 0.0,
+        'grid_export': 0.0,
+        'solar_kwh': 0.0,
+        'storage_charge': 0.0,
+        'storage_discharge': 0.0,
+        'facility_consumption': 0.0,
+    }
     found_any = False
 
+    # --- 1. site_energy_* for Grid and Facility (exclude solar/storage; their registers are broken) ---
     for i in range(DAYS_TO_ANALYZE):
         current_date = start_date + timedelta(days=i)
         date_str = current_date.strftime("%Y-%m-%d")
@@ -188,28 +255,71 @@ def fetch_weekly_energy(start_date, meter_ids):
 
         try:
             query = f"""
-                SELECT meter_number, MIN(TotalEP) as min_ep, MAX(TotalEP) as max_ep
+                SELECT
+                    meter_number,
+                    MIN(ImpEP) AS min_imp,
+                    MAX(ImpEP) AS max_imp,
+                    MIN(ExpEP) AS min_exp,
+                    MAX(ExpEP) AS max_exp
                 FROM {table_name}
-                WHERE ts >= '{date_str} 00:00:00' AND ts <= '{date_str} 23:59:59'
-                AND TotalEP IS NOT NULL
+                WHERE ts >= %s AND ts <= %s
                 GROUP BY meter_number
             """
-            cursor.execute(query)
-            results = cursor.fetchall()
-            for mid, min_ep, max_ep in results:
-                delta = max_ep - min_ep if (min_ep is not None and max_ep is not None) else 0
-                if mid == 1:
-                    energy_source_total += delta
-                elif mid in meter_ids:
-                    energy_meters_total += delta
+            cursor.execute(query, (f"{date_str} 00:00:00", f"{date_str} 23:59:59"))
+            rows = cursor.fetchall()
+
+            for row in rows:
+                mid = row['meter_number']
+                delta_imp = (row['max_imp'] or 0) - (row['min_imp'] or 0)
+                delta_exp = (row['max_exp'] or 0) - (row['min_exp'] or 0)
+
+                if mid == GRID_METER_ID:
+                    result['grid_import'] += delta_imp
+                    result['grid_export'] += delta_exp
+                    found_any = True
+                elif mid in facility_meter_ids:
+                    result['facility_consumption'] += delta_imp
+                    found_any = True
+                # Skip solar/storage: use power integration instead
+        except mysql.connector.Error:
+            pass
+
+    # --- 2. site_power_* integration for Solar (29,31,56) and Storage (30) ---
+    power_meter_ids = tuple(SOLAR_METER_IDS | {STORAGE_METER_ID})
+    in_placeholders = ",".join(["%s"] * len(power_meter_ids))
+
+    for i in range(DAYS_TO_ANALYZE):
+        current_date = start_date + timedelta(days=i)
+        date_str = current_date.strftime("%Y-%m-%d")
+        table_suffix = current_date.strftime("%y%m%d")
+        power_table = f"site_power_{table_suffix}"
+
+        try:
+            query = f"""
+                SELECT meter_number, ts, Pt
+                FROM {power_table}
+                WHERE meter_number IN ({in_placeholders})
+                  AND ts >= %s AND ts <= %s
+                ORDER BY meter_number, ts ASC
+            """
+            cursor.execute(query, (*power_meter_ids, f"{date_str} 00:00:00", f"{date_str} 23:59:59"))
+            rows = cursor.fetchall()
+
+            if rows:
+                s, c, d = _integrate_power_to_kwh(rows)
+                result['solar_kwh'] += s
+                result['storage_charge'] += c
+                result['storage_discharge'] += d
                 found_any = True
         except mysql.connector.Error:
             pass
 
     conn.close()
     if not found_any:
-        return None, None
-    return round(energy_source_total, 2), round(energy_meters_total, 2)
+        return None
+    for k in result:
+        result[k] = round(result[k], 2)
+    return result
 
 def generate_report():
     print(f"--- Starting Weekly Report for {START_DATE_STR} ---")
@@ -232,9 +342,8 @@ def generate_report():
     # 2. Get Data
     weekly_data = fetch_weekly_data(start_dt, meters_df)
 
-    # 2b. Energy comparison (source vs meters, aggregated over week)
-    meter_ids = set(meters_df['meter_number'].tolist())
-    energy_source_kwh, energy_meters_kwh = fetch_weekly_energy(start_dt, meter_ids)
+    # 2b. Energy comparison (grid, solar, storage, facility - aggregated over week)
+    energy_data = fetch_weekly_energy(start_dt, meters_df)
 
     # 3. Build Rows
     table_rows = ""
@@ -313,27 +422,78 @@ def generate_report():
 
     avg_uptime = round(sum_uptime / total_meters, 1) if total_meters > 0 else 0
 
-    # Energy comparison section
-    if energy_source_kwh is not None and energy_meters_kwh is not None:
-        diff_kwh = round(energy_source_kwh - energy_meters_kwh, 2)
-        diff_pct = round((diff_kwh / energy_source_kwh * 100), 1) if energy_source_kwh != 0 else 0
-        diff_sign = "+" if diff_kwh >= 0 else ""
+    # Energy comparison section – discrepancy (loss/unaccounted)
+    if energy_data is not None:
+        d = energy_data
+        total_supply = d['grid_import'] + d['solar_kwh'] + d['storage_discharge']
+        total_accounted = d['facility_consumption'] + d['storage_charge'] + d['grid_export']
+        discrepancy = total_supply - total_accounted
+        loss_pct = (discrepancy / total_supply * 100) if total_supply > 0 else 0
+
+        # Dynamically build the supply cards
+        supply_cards = f"""
+            <div class="energy-card supply">
+                <h3>{d['grid_import']:,.1f}</h3>
+                <p>Grid Import<br>(Supply)</p>
+            </div>
+            <div class="math-sign">+</div>
+            <div class="energy-card supply">
+                <h3>{d['solar_kwh']:,.1f}</h3>
+                <p>Solar Gen<br>(Supply)</p>
+            </div>
+        """
+        if d['storage_discharge'] > 0:
+            supply_cards += f"""
+            <div class="math-sign">+</div>
+            <div class="energy-card supply">
+                <h3>{d['storage_discharge']:,.1f}</h3>
+                <p>Battery Discharge<br>(Supply)</p>
+            </div>
+            """
+
+        # Dynamically build the accounted cards
+        accounted_cards = f"""
+            <div class="energy-card accounted">
+                <h3>{d['facility_consumption']:,.1f}</h3>
+                <p>Facility Load<br>(Accounted)</p>
+            </div>
+        """
+        if d['storage_charge'] > 0:
+            accounted_cards += f"""
+            <div class="math-sign">+</div>
+            <div class="energy-card accounted">
+                <h3>{d['storage_charge']:,.1f}</h3>
+                <p>Battery Charge<br>(Accounted)</p>
+            </div>
+            """
+        if d['grid_export'] > 0:
+            accounted_cards += f"""
+            <div class="math-sign">+</div>
+            <div class="energy-card accounted">
+                <h3>{d['grid_export']:,.1f}</h3>
+                <p>Grid Export<br>(Accounted)</p>
+            </div>
+            """
+
         energy_comparison_section = f"""
         <div class="energy-comparison">
-            <h2>⚡ Energy Comparison: Source vs Meters (Weekly)</h2>
-            <p>From <code>site_energy_*</code> tables (TotalEP cumulative). Source = ID 1 (电网); Meters = sum of all other meters. Aggregated over {DAYS_TO_ANALYZE} days.</p>
-            <div class="energy-grid">
-                <div class="energy-card source">
-                    <h3>{energy_source_kwh} kWh</h3>
-                    <p>Source Input (ID 1)</p>
-                </div>
-                <div class="energy-card meters">
-                    <h3>{energy_meters_kwh} kWh</h3>
-                    <p>Meters Total</p>
-                </div>
-                <div class="energy-card diff">
-                    <h3>{diff_sign}{diff_kwh} kWh ({diff_sign}{diff_pct}%)</h3>
-                    <p>Difference (Source − Meters)</p>
+            <h2>⚡ Energy Discrepancy Analysis (Weekly)</h2>
+            
+            <h3 style="margin-top:15px; color:#3498db; font-size:14px;">ENERGY SUPPLY (Total: {total_supply:,.1f} kWh)</h3>
+            <div class="energy-grid" style="grid-template-columns: repeat(auto-fit, minmax(120px, 150px)); justify-content: start;">
+                {supply_cards}
+            </div>
+            
+            <h3 style="margin-top:20px; color:#2ecc71; font-size:14px;">ENERGY ACCOUNTED (Total: {total_accounted:,.1f} kWh)</h3>
+            <div class="energy-grid" style="grid-template-columns: repeat(auto-fit, minmax(120px, 150px)); justify-content: start;">
+                {accounted_cards}
+            </div>
+            
+            <h3 style="margin-top:20px; color:#e74c3c; font-size:14px;">THE DISCREPANCY (Supply − Accounted)</h3>
+            <div class="energy-grid" style="grid-template-columns: 200px;">
+                <div class="energy-card loss">
+                    <h3 style="font-size:24px;">{discrepancy:,.1f}</h3>
+                    <p>Unaccounted Loss<br>({loss_pct:.1f}%)</p>
                 </div>
             </div>
         </div>
@@ -341,7 +501,7 @@ def generate_report():
     else:
         energy_comparison_section = """
         <div class="energy-comparison">
-            <h2>⚡ Energy Comparison: Source vs Meters (Weekly)</h2>
+            <h2>⚡ Energy Discrepancy Analysis (Weekly)</h2>
             <p class="energy-unavailable">Energy data not available for this period (site_energy tables may not exist or have no data).</p>
         </div>
         """
