@@ -11,7 +11,7 @@ warnings.filterwarnings('ignore')
 
 # --- CONFIGURATION ---
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-TARGET_DATE = "260202"       # YYMMDD (Feb 3rd, 2026)
+TARGET_DATE = "260207"       # YYMMDD (Feb 3rd, 2026)
 REPORT_FILE = os.path.join(SCRIPT_DIR, "daily", f"Frequency-20{TARGET_DATE}.html")
 EXPECTED_FREQ_MIN = 15       # Expected interval in minutes
 EXPECTED_COUNT = int((24 * 60) / EXPECTED_FREQ_MIN) # Target: 96 records
@@ -59,6 +59,17 @@ HTML_TEMPLATE = """
         .progress-fill {{ height: 100%; border-radius: 10px; }}
         
         .time-col {{ font-family: monospace; color: #555; }}
+
+        .energy-comparison {{ margin-top: 30px; padding: 20px; background: #f8f9fa; border-radius: 8px; border: 1px solid #dee2e6; }}
+        .energy-comparison h2 {{ margin-top: 0; color: #2c3e50; border-left: 5px solid #2980b9; padding-left: 10px; }}
+        .energy-grid {{ display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; margin: 20px 0; }}
+        .energy-card {{ background: white; border: 1px solid #ddd; padding: 15px; border-radius: 8px; text-align: center; }}
+        .energy-card h3 {{ margin: 0; font-size: 28px; color: #2c3e50; }}
+        .energy-card p {{ margin: 5px 0 0; color: #7f8c8d; font-size: 11px; font-weight: bold; text-transform: uppercase; }}
+        .energy-card.source {{ border-left: 5px solid #2980b9; }}
+        .energy-card.meters {{ border-left: 5px solid #27ae60; }}
+        .energy-card.diff {{ border-left: 5px solid #e67e22; }}
+        .energy-unavailable {{ color: #95a5a6; font-style: italic; padding: 15px; }}
     </style>
 </head>
 <body>
@@ -72,6 +83,8 @@ HTML_TEMPLATE = """
             <div class="card warning"><h3>{low_perf}</h3><p>Low Performance</p></div>
             <div class="card success"><h3>{perfect}</h3><p>Perfect Count</p></div>
         </div>
+
+        {energy_comparison_section}
 
         <h2>⚠️ Performance Analysis (Sorted by Uptime)</h2>
         {gap_table}
@@ -138,6 +151,34 @@ def generate_report():
             AND ts <= '{full_date_str} 23:59:59'
         """
         all_data = pd.read_sql(query, conn)
+
+        # --- Energy Comparison: Source (ID 1) vs Sum of Meters ---
+        energy_source_kwh = None
+        energy_meters_kwh = None
+        energy_table = f"site_energy_{TARGET_DATE}"
+        try:
+            energy_query = f"""
+                SELECT meter_number, ts, TotalEP
+                FROM {energy_table}
+                WHERE ts >= '{full_date_str} 00:00:00'
+                AND ts <= '{full_date_str} 23:59:59'
+            """
+            energy_df = pd.read_sql(energy_query, conn)
+            if not energy_df.empty:
+                # Source: meter 1 (电网计量表) - TotalEP max - min
+                source_rows = energy_df[energy_df['meter_number'] == 1]
+                if not source_rows.empty:
+                    energy_source_kwh = round(source_rows['TotalEP'].max() - source_rows['TotalEP'].min(), 2)
+                # Meters: sum of (TotalEP max - min) per meter, excluding meter 1
+                meter_ids = [m for m in meters_df['meter_number'].tolist() if m != 1]
+                meters_total = 0.0
+                for mid in meter_ids:
+                    m_rows = energy_df[energy_df['meter_number'] == mid]
+                    if not m_rows.empty:
+                        meters_total += m_rows['TotalEP'].max() - m_rows['TotalEP'].min()
+                energy_meters_kwh = round(meters_total, 2)
+        except Exception as e:
+            print(f"Energy table unavailable ({energy_table}): {e}")
         conn.close()
         
     except Exception as e:
@@ -254,6 +295,39 @@ def generate_report():
     </table>
     """
 
+    # --- ENERGY COMPARISON SECTION ---
+    if energy_source_kwh is not None and energy_meters_kwh is not None:
+        diff_kwh = round(energy_source_kwh - energy_meters_kwh, 2)
+        diff_pct = round((diff_kwh / energy_source_kwh * 100), 1) if energy_source_kwh != 0 else 0
+        diff_sign = "+" if diff_kwh >= 0 else ""
+        energy_comparison_section = f"""
+        <div class="energy-comparison">
+            <h2>⚡ Energy Comparison: Source vs Meters</h2>
+            <p>From <code>site_energy_{TARGET_DATE}</code> (TotalEP cumulative). Source = ID 1 (电网); Meters = sum of all other meters.</p>
+            <div class="energy-grid">
+                <div class="energy-card source">
+                    <h3>{energy_source_kwh} kWh</h3>
+                    <p>Source Input (ID 1)</p>
+                </div>
+                <div class="energy-card meters">
+                    <h3>{energy_meters_kwh} kWh</h3>
+                    <p>Meters Total</p>
+                </div>
+                <div class="energy-card diff">
+                    <h3>{diff_sign}{diff_kwh} kWh ({diff_sign}{diff_pct}%)</h3>
+                    <p>Difference (Source − Meters)</p>
+                </div>
+            </div>
+        </div>
+        """
+    else:
+        energy_comparison_section = """
+        <div class="energy-comparison">
+            <h2>⚡ Energy Comparison: Source vs Meters</h2>
+            <p class="energy-unavailable">Energy data not available for this date (site_energy table may not exist or has no data).</p>
+        </div>
+        """
+
     # --- FILL TEMPLATE ---
     final_html = HTML_TEMPLATE.format(
         date=TARGET_DATE,
@@ -263,6 +337,7 @@ def generate_report():
         dead=dead_count,
         low_perf=low_perf_count,
         perfect=perfect_count,
+        energy_comparison_section=energy_comparison_section,
         gap_table=html_table
     )
 

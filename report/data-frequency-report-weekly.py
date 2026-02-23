@@ -63,12 +63,25 @@ HTML_TEMPLATE = """
         .badge {{ padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 11px; }}
         .bg-green {{ background: #d5f5e3; color: #1eb866; }}
         .bg-red {{ background: #fadbd8; color: #e74c3c; }}
+
+        .energy-comparison {{ margin-top: 30px; padding: 20px; background: #f8f9fa; border-radius: 8px; border: 1px solid #dee2e6; }}
+        .energy-comparison h2 {{ margin-top: 0; color: #2c3e50; border-left: 5px solid #2980b9; padding-left: 10px; }}
+        .energy-grid {{ display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; margin: 20px 0; }}
+        .energy-card {{ background: white; border: 1px solid #ddd; padding: 15px; border-radius: 8px; text-align: center; }}
+        .energy-card h3 {{ margin: 0; font-size: 28px; color: #2c3e50; }}
+        .energy-card p {{ margin: 5px 0 0; color: #7f8c8d; font-size: 11px; font-weight: bold; text-transform: uppercase; }}
+        .energy-card.source {{ border-left: 5px solid #2980b9; }}
+        .energy-card.meters {{ border-left: 5px solid #27ae60; }}
+        .energy-card.diff {{ border-left: 5px solid #e67e22; }}
+        .energy-unavailable {{ color: #95a5a6; font-style: italic; padding: 15px; }}
     </style>
 </head>
 <body>
     <div class="container">
         <h1>📅 Weekly Meter Health Report</h1>
         <div class="meta">Period: <strong>{start_date}</strong> to <strong>{end_date}</strong> (Target: {target_weekly} records)</div>
+
+        {energy_comparison_section}
 
         <div class="summary">
             <div class="card"><h3>{total_meters}</h3><p>Meters Monitored</p></div>
@@ -156,6 +169,48 @@ def fetch_weekly_data(start_date, meters_df):
     conn.close()
     return weekly_data
 
+def fetch_weekly_energy(start_date, meter_ids):
+    """
+    Fetch source (ID 1) and meters total energy for each day; aggregate over 7 days.
+    Returns (energy_source_kwh, energy_meters_kwh) or (None, None) if unavailable.
+    """
+    energy_source_total = 0.0
+    energy_meters_total = 0.0
+    conn = mysql.connector.connect(**db_config)
+    cursor = conn.cursor()
+    found_any = False
+
+    for i in range(DAYS_TO_ANALYZE):
+        current_date = start_date + timedelta(days=i)
+        date_str = current_date.strftime("%Y-%m-%d")
+        table_suffix = current_date.strftime("%y%m%d")
+        table_name = f"site_energy_{table_suffix}"
+
+        try:
+            query = f"""
+                SELECT meter_number, MIN(TotalEP) as min_ep, MAX(TotalEP) as max_ep
+                FROM {table_name}
+                WHERE ts >= '{date_str} 00:00:00' AND ts <= '{date_str} 23:59:59'
+                AND TotalEP IS NOT NULL
+                GROUP BY meter_number
+            """
+            cursor.execute(query)
+            results = cursor.fetchall()
+            for mid, min_ep, max_ep in results:
+                delta = max_ep - min_ep if (min_ep is not None and max_ep is not None) else 0
+                if mid == 1:
+                    energy_source_total += delta
+                elif mid in meter_ids:
+                    energy_meters_total += delta
+                found_any = True
+        except mysql.connector.Error:
+            pass
+
+    conn.close()
+    if not found_any:
+        return None, None
+    return round(energy_source_total, 2), round(energy_meters_total, 2)
+
 def generate_report():
     print(f"--- Starting Weekly Report for {START_DATE_STR} ---")
     
@@ -176,6 +231,10 @@ def generate_report():
 
     # 2. Get Data
     weekly_data = fetch_weekly_data(start_dt, meters_df)
+
+    # 2b. Energy comparison (source vs meters, aggregated over week)
+    meter_ids = set(meters_df['meter_number'].tolist())
+    energy_source_kwh, energy_meters_kwh = fetch_weekly_energy(start_dt, meter_ids)
 
     # 3. Build Rows
     table_rows = ""
@@ -254,6 +313,39 @@ def generate_report():
 
     avg_uptime = round(sum_uptime / total_meters, 1) if total_meters > 0 else 0
 
+    # Energy comparison section
+    if energy_source_kwh is not None and energy_meters_kwh is not None:
+        diff_kwh = round(energy_source_kwh - energy_meters_kwh, 2)
+        diff_pct = round((diff_kwh / energy_source_kwh * 100), 1) if energy_source_kwh != 0 else 0
+        diff_sign = "+" if diff_kwh >= 0 else ""
+        energy_comparison_section = f"""
+        <div class="energy-comparison">
+            <h2>⚡ Energy Comparison: Source vs Meters (Weekly)</h2>
+            <p>From <code>site_energy_*</code> tables (TotalEP cumulative). Source = ID 1 (电网); Meters = sum of all other meters. Aggregated over {DAYS_TO_ANALYZE} days.</p>
+            <div class="energy-grid">
+                <div class="energy-card source">
+                    <h3>{energy_source_kwh} kWh</h3>
+                    <p>Source Input (ID 1)</p>
+                </div>
+                <div class="energy-card meters">
+                    <h3>{energy_meters_kwh} kWh</h3>
+                    <p>Meters Total</p>
+                </div>
+                <div class="energy-card diff">
+                    <h3>{diff_sign}{diff_kwh} kWh ({diff_sign}{diff_pct}%)</h3>
+                    <p>Difference (Source − Meters)</p>
+                </div>
+            </div>
+        </div>
+        """
+    else:
+        energy_comparison_section = """
+        <div class="energy-comparison">
+            <h2>⚡ Energy Comparison: Source vs Meters (Weekly)</h2>
+            <p class="energy-unavailable">Energy data not available for this period (site_energy tables may not exist or have no data).</p>
+        </div>
+        """
+
     # 4. Save
     html = HTML_TEMPLATE.format(
         start_date=START_DATE_STR,
@@ -263,6 +355,7 @@ def generate_report():
         avg_uptime=avg_uptime,
         perfect_meters=perfect_meters,
         dead_meters=dead_meters,
+        energy_comparison_section=energy_comparison_section,
         rows=table_rows
     )
 
