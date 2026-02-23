@@ -10,10 +10,12 @@ import re
 warnings.filterwarnings('ignore')
 
 # --- CONFIGURATION ---
-TARGET_DATE = "260206"       # YYMMDD (Feb 3rd, 2026)
-REPORT_FILE = f"Frequency-20{TARGET_DATE}.html"
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+TARGET_DATE = "260201"       # YYMMDD (Feb 3rd, 2026)
+REPORT_FILE = os.path.join(SCRIPT_DIR, "daily", f"Frequency-20{TARGET_DATE}.html")
 EXPECTED_FREQ_MIN = 15       # Expected interval in minutes
 EXPECTED_COUNT = int((24 * 60) / EXPECTED_FREQ_MIN) # Target: 96 records
+EXCLUDED_METER_IDS = {1}     # 1 = 电网计量表 (main grid input table, not a meter)
 # ---------------------
 
 db_config = {
@@ -142,6 +144,9 @@ def generate_report():
         print(f"Error: {e}")
         return
 
+    # Exclude non-meter entries (e.g. main grid input table)
+    meters_df = meters_df[~meters_df['meter_number'].isin(EXCLUDED_METER_IDS)]
+
     # Data Prep
     all_data['ts'] = pd.to_datetime(all_data['ts'])
     grouped = all_data.groupby('meter_number')
@@ -261,6 +266,7 @@ def generate_report():
         gap_table=html_table
     )
 
+    os.makedirs(os.path.dirname(REPORT_FILE), exist_ok=True)
     with open(REPORT_FILE, "w", encoding="utf-8") as f:
         f.write(final_html)
 

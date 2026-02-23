@@ -12,6 +12,7 @@ warnings.filterwarnings('ignore')
 START_DATE_STR = "2026-02-02"   # YYYY-MM-DD (Monday)
 DAYS_TO_ANALYZE = 7             # 1 Week
 EXPECTED_DAILY_COUNT = 96       # 15 min intervals
+EXCLUDED_METER_IDS = {1}        # 1 = 电网计量表 (main grid input table, not a meter)
 # ---------------------
 
 db_config = {
@@ -22,7 +23,8 @@ db_config = {
     'database': 'unified'
 }
 
-REPORT_FILE = f"Weekly-Report-{START_DATE_STR}.html"
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+REPORT_FILE = os.path.join(SCRIPT_DIR, "weekly", f"Weekly-Report-{START_DATE_STR}.html")
 
 # --- HTML TEMPLATE ---
 HTML_TEMPLATE = """
@@ -169,6 +171,9 @@ def generate_report():
         print(f"DB Error: {e}")
         return
 
+    # Exclude non-meter entries (e.g. main grid input table)
+    meters_df = meters_df[~meters_df['meter_number'].isin(EXCLUDED_METER_IDS)]
+
     # 2. Get Data
     weekly_data = fetch_weekly_data(start_dt, meters_df)
 
@@ -261,6 +266,7 @@ def generate_report():
         rows=table_rows
     )
 
+    os.makedirs(os.path.dirname(REPORT_FILE), exist_ok=True)
     with open(REPORT_FILE, "w", encoding="utf-8") as f:
         f.write(html)
         
