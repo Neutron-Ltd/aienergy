@@ -10,7 +10,8 @@ config = {
     'database': 'unified'
 }
 
-OUTPUT_FILE = "full_schema_python.sql"
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+OUTPUT_FILE = os.path.join(SCRIPT_DIR, "data", "schema.sql")
 
 def dump_schema():
     print(f"Connecting to {config['host']}...")
@@ -20,6 +21,7 @@ def dump_schema():
         cursor = conn.cursor()
         
         # Open file to write
+        os.makedirs(os.path.dirname(OUTPUT_FILE), exist_ok=True)
         with open(OUTPUT_FILE, 'w', encoding='utf-8') as f:
             # Header
             f.write(f"-- Schema Dump for database: {config['database']}\n")

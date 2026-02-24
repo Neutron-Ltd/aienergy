@@ -13,7 +13,6 @@ aienergy/
 │   ├── schema.py       # Schema export
 │   ├── schema.sql      # Dumped schema
 │   ├── permissions.py  # Permission helpers
-│   └── definitions.md  # Schema definitions
 ├── meter/              # Single-meter analysis
 │   ├── meter.py        # HTML report for one meter
 │   └── data/           # Output: meter-{id}-{YYMMDD}.html
