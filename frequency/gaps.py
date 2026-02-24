@@ -1,11 +1,15 @@
 import mysql.connector
 import pandas as pd
 import warnings
+import os
 
 # Suppress warnings
 warnings.filterwarnings('ignore')
 
 # --- CONFIGURATION ---
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+DATA_DIR = os.path.join(SCRIPT_DIR, "data")
+os.makedirs(DATA_DIR, exist_ok=True)
 TARGET_DATE = "260202"   # <--- Updated to Feb 2nd, 2026
 EXPECTED_FREQ = '5min'   # Adjust this if your meters report every 15 mins
 # ---------------------
@@ -118,7 +122,7 @@ def generate_report():
     report_df = pd.DataFrame(results)
     report_df = report_df.sort_values(by=['status', 'gap_count'], ascending=[True, False])
     
-    filename = f"gap_report_{TARGET_DATE}.csv"
+    filename = os.path.join(DATA_DIR, f"gaps-{TARGET_DATE}.csv")
     report_df.to_csv(filename, index=False)
     
     print("\n" + "="*40)

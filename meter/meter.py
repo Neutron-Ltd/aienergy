@@ -18,7 +18,7 @@ os.makedirs(DATA_DIR, exist_ok=True)
 TARGET_METER_ID = 29
 TARGET_DATE_SUFFIX = "260202"      # Table suffix (YYMMDD)
 FULL_DATE_STR = "2026-02-02"       # For strict SQL filtering (YYYY-MM-DD)
-REPORT_FILE = os.path.join(DATA_DIR, f"Meter-{TARGET_METER_ID}-{TARGET_DATE_SUFFIX}.html")
+REPORT_FILE = os.path.join(DATA_DIR, f"meter-{TARGET_METER_ID}-{TARGET_DATE_SUFFIX}.html")
 # ---------------------
 
 db_config = {

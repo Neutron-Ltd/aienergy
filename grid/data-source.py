@@ -14,7 +14,7 @@ os.makedirs(DATA_DIR, exist_ok=True)
 
 TARGET_ID = 1               # The Utility Source Meter
 TARGET_DATE = "260203"      # Feb 3rd, 2026
-REPORT_FILE = os.path.join(DATA_DIR, f"Source-Energy-ID{TARGET_ID}.html")
+REPORT_FILE = os.path.join(DATA_DIR, f"data-source-{TARGET_ID}-{TARGET_DATE}.html")
 # ---------------------
 
 db_config = {

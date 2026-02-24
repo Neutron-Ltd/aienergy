@@ -28,7 +28,9 @@ METER_LABELS = {
     31: "Phase 2 PV",
     56: "Phase 3 PV",
 }
-REPORT_FILE = os.path.join(DATA_DIR, f"Solar-Energy-Diagnostic-{START_DATE_STR}.html")
+# Filename: solar-YYMMDD.html (e.g. solar-260201.html)
+START_DATE_SUFFIX = datetime.strptime(START_DATE_STR, "%Y-%m-%d").strftime("%y%m%d")
+REPORT_FILE = os.path.join(DATA_DIR, f"solar-{START_DATE_SUFFIX}.html")
 
 db_config = {
     "host": "localhost",

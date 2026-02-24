@@ -28,7 +28,11 @@ db_config = {
 }
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-REPORT_FILE = os.path.join(SCRIPT_DIR, "weekly", f"Weekly-Report-{START_DATE_STR}.html")
+DATA_DIR = os.path.join(SCRIPT_DIR, "data")
+os.makedirs(DATA_DIR, exist_ok=True)
+# Filename: weekly-YYMMDD.html (e.g. weekly-260201.html)
+START_DATE_SUFFIX = datetime.strptime(START_DATE_STR, "%Y-%m-%d").strftime("%y%m%d")
+REPORT_FILE = os.path.join(DATA_DIR, f"weekly-{START_DATE_SUFFIX}.html")
 
 # --- HTML TEMPLATE ---
 HTML_TEMPLATE = """
