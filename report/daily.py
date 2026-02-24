@@ -11,16 +11,11 @@ warnings.filterwarnings('ignore')
 
 # --- CONFIGURATION ---
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-TARGET_DATE = "260201"       # YYMMDD (Feb 3rd, 2026)
+TARGET_DATE = "260202"       # Default date (YYMMDD)
 DATA_DIR = os.path.join(SCRIPT_DIR, "data")
 os.makedirs(DATA_DIR, exist_ok=True)
-REPORT_FILE = os.path.join(DATA_DIR, f"daily-{TARGET_DATE}.html")
 EXPECTED_FREQ_MIN = 15       # Expected interval in minutes
 EXPECTED_COUNT = int((24 * 60) / EXPECTED_FREQ_MIN) # Target: 96 records
-EXCLUDED_METER_IDS = {1}     # 1 = 电网计量表 (main grid input table, not a meter)
-GRID_METER_ID = 1
-SOLAR_METER_IDS = {29, 31, 56}  # PV generation meters
-STORAGE_METER_ID = 30           # Energy storage
 # ---------------------
 
 db_config = {
@@ -31,7 +26,7 @@ db_config = {
     'database': 'unified'
 }
 
-# --- HTML CSS & TEMPLATE ---
+# --- HTML CSS & TEMPLATE (Restored to Original UI) ---
 HTML_TEMPLATE = """
 <!DOCTYPE html>
 <html>
@@ -49,331 +44,194 @@ HTML_TEMPLATE = """
         .card.danger {{ border-left: 5px solid #e74c3c; }}
         .card.warning {{ border-left: 5px solid #f39c12; }}
         .card.success {{ border-left: 5px solid #27ae60; }}
-
-        table {{ width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 13px; }}
-        th {{ background-color: #f8f9fa; color: #2c3e50; padding: 12px; text-align: left; border-bottom: 2px solid #dee2e6; }}
-        td {{ padding: 10px; border-bottom: 1px solid #eee; }}
-        tr:hover {{ background-color: #f1f1f1; }}
-
-        .badge {{ padding: 5px 10px; border-radius: 4px; font-weight: bold; font-size: 11px; display: inline-block; min-width: 60px; text-align: center; }}
-        .bg-red {{ background-color: #ffeaea; color: #e74c3c; }}
-        .bg-orange {{ background-color: #fff8e1; color: #f39c12; }}
-        .bg-green {{ background-color: #e8f8f5; color: #27ae60; }}
-
-        .progress-bg {{ background-color: #eee; border-radius: 10px; height: 8px; width: 80px; display: inline-block; margin-right: 10px; }}
-        .progress-fill {{ height: 100%; border-radius: 10px; }}
+        .card.info {{ border-left: 5px solid #3498db; }}
         
-        .time-col {{ font-family: monospace; color: #555; }}
-
-        .energy-comparison {{ margin-top: 30px; padding: 20px; background: #fff; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.05); }}
-        .energy-comparison h2 {{ margin-top: 0; color: #2c3e50; padding-bottom: 10px; border-bottom: 2px solid #eee; }}
-        .energy-grid {{ display: grid; gap: 15px; margin-top: 20px; }}
-        .energy-card {{ background: #f8f9fa; border: 1px solid #e9ecef; padding: 20px 10px; border-radius: 8px; text-align: center; display: flex; flex-direction: column; justify-content: center; }}
-        .energy-card h3 {{ margin: 0; font-size: 20px; color: #2c3e50; font-weight: 700; }}
-        .energy-card p {{ margin: 8px 0 0; color: #7f8c8d; font-size: 11px; font-weight: 700; text-transform: uppercase; line-height: 1.3; }}
-        .energy-card.supply {{ border-top: 4px solid #3498db; }}
-        .energy-card.accounted {{ border-top: 4px solid #2ecc71; }}
-        .energy-card.loss {{ border-top: 4px solid #e74c3c; background-color: #fdf2f0; }}
-        .energy-card.loss h3 {{ color: #c0392b; }}
-        .math-sign {{ display: flex; align-items: center; justify-content: center; font-size: 24px; color: #bdc3c7; font-weight: bold; }}
-        .energy-unavailable {{ color: #95a5a6; font-style: italic; padding: 15px; }}
+        table {{ width: 100%; border-collapse: collapse; font-size: 14px; margin-top: 20px; }}
+        th {{ background: #2c3e50; color: white; padding: 12px; text-align: left; position: sticky; top: 0; z-index: 10; }}
+        td {{ padding: 10px 12px; border-bottom: 1px solid #eee; }}
+        tr:hover {{ background-color: #f9f9f9; }}
+        
+        .badge {{ padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: bold; color: white; }}
+        .bg-green {{ background: #27ae60; }}
+        .bg-orange {{ background: #f39c12; }}
+        .bg-red {{ background: #e74c3c; }}
+        .bg-grey {{ background: #95a5a6; }}
+        
+        .type-badge {{ font-size: 12px; font-weight: bold; padding: 3px 6px; border-radius: 4px; border: 1px solid #ccc; background: #fff; display: inline-block; }}
+        
+        .time-col {{ font-family: monospace; color: #7f8c8d; }}
+        .progress-bg {{ background: #ecf0f1; border-radius: 10px; height: 10px; width: 100px; margin-right: 10px; display: inline-block; overflow: hidden; vertical-align: middle; }}
+        .progress-fill {{ height: 100%; border-radius: 10px; transition: width 0.3s; }}
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>📊 Meter Frequency Report: 20{date}</h1>
-        <p>Target: <strong>{target_count} records</strong> per day (Every {freq} mins)</p>
-        
+        <h1>📡 Network Pulse: Daily Frequency Report ({date})</h1>
+        <p>Target Interval: <strong>{freq} minutes</strong> | Expected Records: <strong>{target_count}/day</strong></p>
+
         <div class="summary-grid">
-            <div class="card"><h3>{total}</h3><p>Total Meters</p></div>
-            <div class="card danger"><h3>{dead}</h3><p>Dead (0 Data)</p></div>
-            <div class="card warning"><h3>{low_perf}</h3><p>Low Performance</p></div>
-            <div class="card success"><h3>{perfect}</h3><p>Perfect Count</p></div>
+            <div class="card info">
+                <h3>{total}</h3>
+                <p>Total Registered Devices</p>
+            </div>
+            <div class="card danger">
+                <h3>{dead}</h3>
+                <p>Offline / Dead (< 50%)</p>
+            </div>
+            <div class="card warning">
+                <h3>{low_perf}</h3>
+                <p>Low Performance (< 95%)</p>
+            </div>
+            <div class="card success">
+                <h3>{perfect}</h3>
+                <p>Perfect Rhythm (95%+)</p>
+            </div>
         </div>
 
-        {energy_comparison_section}
-
-        <h2>⚠️ Performance Analysis (Sorted by Uptime)</h2>
+        <h2>Detailed Device Diagnostics</h2>
         {gap_table}
     </div>
 </body>
 </html>
 """
 
-def _integrate_power_to_kwh(rows):
-    solar_kwh = 0.0
-    storage_charge = 0.0
-    storage_discharge = 0.0
-    prev = {}  # mid -> {ts, Pt}
-
-    for row in rows:
-        mid = row['meter_number']
-        ts = row['ts']
-        pt = row['Pt'] if row.get('Pt') is not None else 0.0
-
-        if mid in prev:
-            delta_seconds = (ts - prev[mid]['ts']).total_seconds()
-            if delta_seconds > 0:
-                interval_hours = delta_seconds / 3600.0
-                interval_kwh = prev[mid]['Pt'] * interval_hours
-
-                if mid in SOLAR_METER_IDS:
-                    solar_kwh += abs(interval_kwh)
-                elif mid == STORAGE_METER_ID:
-                    if prev[mid]['Pt'] > 0:
-                        storage_charge += interval_kwh
-                    else:
-                        storage_discharge += abs(interval_kwh)
-
-        prev[mid] = {'ts': ts, 'Pt': pt}
-
-    return solar_kwh, storage_charge, storage_discharge
-
-
-def fetch_daily_energy(target_date, meters_df):
-    conn = mysql.connector.connect(**db_config)
-    cursor = conn.cursor(dictionary=True)
-
-    try:
-        meter_info_df = pd.read_sql("SELECT meter_number, parent_meter_number FROM meter_info", conn)
-    except Exception:
-        conn.close()
-        return None
-
-    parent_numbers = set(int(x) for x in meter_info_df['parent_meter_number'].dropna().astype(int).tolist() if x != 0)
-    all_meter_numbers = set(meter_info_df['meter_number'].tolist())
-    terminal_meter_ids = all_meter_numbers - parent_numbers
-    facility_meter_ids = terminal_meter_ids - {GRID_METER_ID} - SOLAR_METER_IDS - {STORAGE_METER_ID}
-
-    result = {
-        'grid_import': 0.0,
-        'grid_export': 0.0,
-        'solar_kwh': 0.0,
-        'storage_charge': 0.0,
-        'storage_discharge': 0.0,
-        'facility_consumption': 0.0,
-    }
-    found_any = False
-
-    # 1. Grid & Facility from site_energy
-    energy_table = f"site_energy_{target_date}"
-    try:
-        query = f"""
-            SELECT meter_number, MIN(ImpEP) AS min_imp, MAX(ImpEP) AS max_imp, MIN(ExpEP) AS min_exp, MAX(ExpEP) AS max_exp
-            FROM {energy_table} GROUP BY meter_number
-        """
-        cursor.execute(query)
-        rows = cursor.fetchall()
-        for row in rows:
-            mid = row['meter_number']
-            delta_imp = (row['max_imp'] or 0) - (row['min_imp'] or 0)
-            delta_exp = (row['max_exp'] or 0) - (row['min_exp'] or 0)
-
-            if mid == GRID_METER_ID:
-                result['grid_import'] += delta_imp
-                result['grid_export'] += delta_exp
-                found_any = True
-            elif mid in facility_meter_ids:
-                result['facility_consumption'] += delta_imp
-                found_any = True
-    except mysql.connector.Error:
-        pass
-
-    # 2. Solar & Storage via integration from site_power
-    power_table = f"site_power_{target_date}"
-    power_meter_ids = tuple(SOLAR_METER_IDS | {STORAGE_METER_ID})
-    in_placeholders = ",".join(["%s"] * len(power_meter_ids))
-    try:
-        query = f"""
-            SELECT meter_number, ts, Pt
-            FROM {power_table}
-            WHERE meter_number IN ({in_placeholders})
-            ORDER BY meter_number, ts ASC
-        """
-        cursor.execute(query, power_meter_ids)
-        rows = cursor.fetchall()
-        if rows:
-            s, c, d = _integrate_power_to_kwh(rows)
-            result['solar_kwh'] += s
-            result['storage_charge'] += c
-            result['storage_discharge'] += d
-            found_any = True
-    except mysql.connector.Error:
-        pass
-
-    conn.close()
-    if not found_any:
-        return None
-    for k in result:
-        result[k] = round(result[k], 2)
-    return result
-
-
-def analyze_meter_count(series):
-    # 1. Count actual records
-    actual_count = len(series)
-    
-    # 2. Get Start/End Times
-    if actual_count > 0:
-        start_str = series.min().strftime('%H:%M:%S')
-        end_str = series.max().strftime('%H:%M:%S')
-    else:
-        start_str = "-"
-        end_str = "-"
-
-    # 3. Calculate Uptime % based on Target
-    uptime = (actual_count / EXPECTED_COUNT) * 100
-    if uptime > 100: uptime = 100 
-    
-    # 4. Calculate Average Insert Delay
-    if actual_count > 1:
-        start_time = series.min()
-        end_time = series.max()
-        duration_seconds = (end_time - start_time).total_seconds()
+def analyze_rhythm(timestamps):
+    if len(timestamps) == 0:
+        return 0, "-", "-", "-", "0.0"
         
-        avg_seconds = duration_seconds / (actual_count - 1)
-        
-        mins = int(avg_seconds // 60)
-        secs = int(avg_seconds % 60)
-        avg_delay_str = f"{mins}m {secs}s"
-    else:
-        avg_delay_str = "N/A"
-
-    return actual_count, uptime, avg_delay_str, start_str, end_str
-
-def generate_report():
-    print(f"--- Generating Report for {TARGET_DATE} (Target: {EXPECTED_COUNT} records) ---")
+    ts_series = pd.Series(pd.to_datetime(timestamps)).sort_values().reset_index(drop=True)
+    count = len(ts_series)
     
-    # Date Filtering Logic
-    year = "20" + TARGET_DATE[0:2]
-    month = TARGET_DATE[2:4]
-    day = TARGET_DATE[4:6]
-    full_date_str = f"{year}-{month}-{day}"
-    print(f"Filtering Data Range: {full_date_str} 00:00:00 to 23:59:59")
+    first_seen = ts_series.iloc[0].strftime('%H:%M:%S')
+    last_seen = ts_series.iloc[-1].strftime('%H:%M:%S')
+    
+    if count > 1:
+        deltas = ts_series.diff().dropna().dt.total_seconds() / 60.0
+        avg_gap = deltas.mean()
+        avg_gap_str = f"{int(avg_gap)}m {int((avg_gap % 1) * 60)}s"
+    else:
+        avg_gap_str = "N/A"
+        
+    uptime_pct = min((count / EXPECTED_COUNT) * 100, 100.0)
+    return count, avg_gap_str, first_seen, last_seen, f"{uptime_pct:.1f}"
+
+def run_daily_report(date_suffix):
+    report_file = os.path.join(DATA_DIR, f"daily-{date_suffix}.html")
+    print(f"--- Running Fleet-Wide Health Report for 20{date_suffix} ---")
     
     try:
         conn = mysql.connector.connect(**db_config)
-        print("Fetching meter registry...")
-        meters_df = pd.read_sql("SELECT meter_number, meter_name, mac_address FROM meter_info", conn)
+        cursor = conn.cursor()
         
-        table_name = f"site_power_{TARGET_DATE}"
-        print(f"Reading logs from {table_name}...")
+        # 1. Fetch All Meters
+        cursor.execute("SELECT meter_number, meter_name FROM meter_info ORDER BY meter_number ASC")
+        meters = [{"id": row[0], "name": row[1]} for row in cursor.fetchall()]
         
-        # Strict Query
-        query = f"""
-            SELECT meter_number, ts 
-            FROM {table_name}
-            WHERE ts >= '{full_date_str} 00:00:00'
-            AND ts <= '{full_date_str} 23:59:59'
-        """
-        all_data = pd.read_sql(query, conn)
+        # 2. Bulk Fetch Power & Energy Tables
+        print("Fetching Speedometer (Power) and Odometer (Energy) data...")
+        try:
+            df_power = pd.read_sql(f"SELECT meter_number, ts FROM site_power_{date_suffix}", conn)
+        except: df_power = pd.DataFrame(columns=['meter_number', 'ts'])
 
-        # --- Energy Comparison: Supply vs Accounted vs Discrepancy ---
-        energy_data = fetch_daily_energy(TARGET_DATE, meters_df)
-        conn.close()
+        try:
+            df_energy = pd.read_sql(f"SELECT meter_number, ts, TotalEP, ImpEP, ExpEP FROM site_energy_{date_suffix}", conn)
+        except: df_energy = pd.DataFrame(columns=['meter_number', 'ts', 'TotalEP', 'ImpEP', 'ExpEP'])
         
+        cursor.close()
+        conn.close()
     except Exception as e:
-        print(f"Error: {e}")
+        print(f"Error connecting to database: {e}")
         return
 
-    # Exclude non-meter entries (e.g. main grid input table)
-    meters_df = meters_df[~meters_df['meter_number'].isin(EXCLUDED_METER_IDS)]
-
-    # Data Prep
-    all_data['ts'] = pd.to_datetime(all_data['ts'])
-    grouped = all_data.groupby('meter_number')
-    meters_with_data = set(grouped.groups.keys())
-
-    stats_list = []
     dead_count = 0
-    perfect_count = 0
     low_perf_count = 0
-
-    print("Analyzing meters...")
-
-    for index, row in meters_df.iterrows():
-        m_id = row['meter_number']
-        m_name = row['meter_name']
-        
-        # DEAD METERS
-        if m_id not in meters_with_data:
-            stats_list.append({
-                'id': m_id,
-                'name': m_name,
-                'count': 0,
-                'uptime': 0.0,
-                'avg_delay': 'OFFLINE',
-                'start': '-',
-                'end': '-'
-            })
-            dead_count += 1
-            continue
-
-        # ACTIVE METERS
-        ts_series = grouped.get_group(m_id)['ts']
-        actual_count, uptime, avg_delay, start_time, end_time = analyze_meter_count(ts_series)
-        
-        stats_list.append({
-            'id': m_id,
-            'name': m_name,
-            'count': actual_count,
-            'uptime': round(uptime, 1),
-            'avg_delay': avg_delay,
-            'start': start_time,
-            'end': end_time
-        })
-        
-        if uptime >= 98.0:
-            perfect_count += 1
-        elif uptime > 0:
-            low_perf_count += 1
-
-    # Sort by Uptime (Lowest first)
-    stats_list.sort(key=lambda x: x['uptime'])
-
-    # --- GENERATE HTML TABLE ---
+    perfect_count = 0
     table_rows = ""
-    for m in stats_list:
-        # Colors
-        if m['uptime'] == 0: 
-            color = "#e74c3c" # Red
-            badge = "<span class='badge bg-red'>OFFLINE</span>"
-        elif m['uptime'] < 90: 
-            color = "#f39c12" # Orange
-            badge = "<span class='badge bg-orange'>LOW</span>"
-        else: 
-            color = "#27ae60" # Green
+
+    print("Analyzing gaps and categorizing devices...")
+    for m in meters:
+        mid = m['id']
+        name = m['name']
+        
+        # Filter data for this meter
+        m_power = df_power[df_power['meter_number'] == mid] if not df_power.empty else pd.DataFrame()
+        m_energy = df_energy[df_energy['meter_number'] == mid] if not df_energy.empty else pd.DataFrame()
+        
+        has_power = not m_power.empty
+        has_energy = not m_energy.empty
+        
+        # Check if energy registers are moving
+        energy_is_zero = True
+        if has_energy:
+            for col in ['TotalEP', 'ImpEP', 'ExpEP']:
+                if col in m_energy.columns and m_energy[col].max() > 0:
+                    energy_is_zero = False
+                    break
+
+        # Detect Type & Assign Target Timestamps
+        target_ts = []
+        if has_power and not energy_is_zero:
+            m_type_html = "<span class='type-badge' style='color: #2980b9; border-color: #3498db;'>Standard Load</span>"
+            target_ts = m_power['ts'].tolist()
+        elif not has_power and has_energy and not energy_is_zero:
+            m_type_html = "<span class='type-badge' style='color: #8e44ad; border-color: #9b59b6;'>Energy-Only (Grid)</span>"
+            target_ts = m_energy['ts'].tolist()
+        elif has_power and energy_is_zero:
+            m_type_html = "<span class='type-badge' style='color: #d35400; border-color: #e67e22;'>Power-Only (Anomaly)</span>"
+            target_ts = m_power['ts'].tolist()
+        else:
+            m_type_html = "<span class='type-badge' style='color: #7f8c8d; border-color: #95a5a6;'>Offline</span>"
+            
+        count, avg_gap, first_s, last_s, uptime = analyze_rhythm(target_ts)
+        uptime_val = float(uptime)
+
+        # Apply Original Status Logic
+        if count == 0:
+            badge = "<span class='badge bg-grey'>OFFLINE</span>"
+            color = "#95a5a6"
+            dead_count += 1
+        elif uptime_val < 50:
+            badge = "<span class='badge bg-red'>CRITICAL</span>"
+            color = "#e74c3c"
+            dead_count += 1
+        elif uptime_val < 95:
+            badge = "<span class='badge bg-orange'>WARNING</span>"
+            color = "#f39c12"
+            low_perf_count += 1
+        else:
             badge = "<span class='badge bg-green'>OK</span>"
+            color = "#27ae60"
+            perfect_count += 1
+            
+        count_display = f"<span style='color:#e74c3c'><b>{count}</b></span>" if count < (EXPECTED_COUNT * 0.95) else count
 
-        # Highlight count
-        count_display = f"<b>{m['count']}</b>"
-        if m['count'] < EXPECTED_COUNT:
-            count_display = f"<span style='color:#e74c3c'><b>{m['count']}</b></span>"
-
+        # Render HTML Row
         table_rows += f"""
         <tr>
-            <td><b>{m['id']}</b></td>
-            <td>{m['name']}</td>
+            <td><b>{mid}</b></td>
+            <td>{name}</td>
+            <td>{m_type_html}</td>
             <td>
                 <div style="display:flex; align-items:center;">
-                    <div class="progress-bg"><div class="progress-fill" style="width:{m['uptime']}%; background-color:{color};"></div></div>
-                    <strong>{m['uptime']}%</strong>
+                    <div class="progress-bg"><div class="progress-fill" style="width:{uptime}%; background-color:{color};"></div></div>
+                    <strong>{uptime}%</strong>
                 </div>
             </td>
             <td>{count_display} / {EXPECTED_COUNT}</td>
-            <td>{m['avg_delay']}</td>
-            <td class="time-col">{m['start']}</td>
-            <td class="time-col">{m['end']}</td>
+            <td>{avg_gap}</td>
+            <td class="time-col">{first_s}</td>
+            <td class="time-col">{last_s}</td>
             <td>{badge}</td>
         </tr>
         """
-    
+
     html_table = f"""
     <table>
         <thead>
             <tr>
                 <th>ID</th>
                 <th>Name</th>
+                <th>Detected Type</th>
                 <th>Uptime (Based on Count)</th>
                 <th>Records</th>
                 <th>Avg Interval</th>
@@ -386,72 +244,31 @@ def generate_report():
     </table>
     """
 
-    # --- ENERGY COMPARISON SECTION ---
-    if energy_data is not None:
-        d = energy_data
-        total_supply = d['grid_import'] + d['solar_kwh'] + d['storage_discharge']
-        total_accounted = d['facility_consumption'] + d['storage_charge'] + d['grid_export']
-        discrepancy = total_supply - total_accounted
-        loss_pct = (discrepancy / total_supply * 100) if total_supply > 0 else 0
-
-        supply_cards = f"""
-            <div class="energy-card supply"><h3>{d['grid_import']:,.1f}</h3><p>Grid Import<br>(Supply)</p></div>
-            <div class="math-sign">+</div>
-            <div class="energy-card supply"><h3>{d['solar_kwh']:,.1f}</h3><p>Solar Gen<br>(Supply)</p></div>
-        """
-        if d['storage_discharge'] > 0:
-            supply_cards += f"""<div class="math-sign">+</div><div class="energy-card supply"><h3>{d['storage_discharge']:,.1f}</h3><p>Battery Discharge<br>(Supply)</p></div>"""
-
-        accounted_cards = f"""
-            <div class="energy-card accounted"><h3>{d['facility_consumption']:,.1f}</h3><p>Facility Load<br>(Accounted)</p></div>
-        """
-        if d['storage_charge'] > 0:
-            accounted_cards += f"""<div class="math-sign">+</div><div class="energy-card accounted"><h3>{d['storage_charge']:,.1f}</h3><p>Battery Charge<br>(Accounted)</p></div>"""
-        if d['grid_export'] > 0:
-            accounted_cards += f"""<div class="math-sign">+</div><div class="energy-card accounted"><h3>{d['grid_export']:,.1f}</h3><p>Grid Export<br>(Accounted)</p></div>"""
-
-        energy_comparison_section = f"""
-        <div class="energy-comparison">
-            <h2>⚡ Energy Discrepancy Analysis (Daily)</h2>
-            <h3 style="margin-top:15px; color:#3498db; font-size:14px;">ENERGY SUPPLY (Total: {total_supply:,.1f} kWh)</h3>
-            <div class="energy-grid" style="grid-template-columns: repeat(auto-fit, minmax(120px, 150px)); justify-content: start;">{supply_cards}</div>
-            <h3 style="margin-top:20px; color:#2ecc71; font-size:14px;">ENERGY ACCOUNTED (Total: {total_accounted:,.1f} kWh)</h3>
-            <div class="energy-grid" style="grid-template-columns: repeat(auto-fit, minmax(120px, 150px)); justify-content: start;">{accounted_cards}</div>
-            <h3 style="margin-top:20px; color:#e74c3c; font-size:14px;">THE DISCREPANCY (Supply − Accounted)</h3>
-            <div class="energy-grid" style="grid-template-columns: 200px;">
-                <div class="energy-card loss">
-                    <h3 style="font-size:24px;">{discrepancy:,.1f}</h3><p>Unaccounted Loss<br>({loss_pct:.1f}%)</p>
-                </div>
-            </div>
-        </div>
-        """
-    else:
-        energy_comparison_section = """
-        <div class="energy-comparison">
-            <h2>⚡ Energy Discrepancy Analysis (Daily)</h2>
-            <p class="energy-unavailable">Energy data not available for this date.</p>
-        </div>
-        """
-
-    # --- FILL TEMPLATE ---
     final_html = HTML_TEMPLATE.format(
-        date=TARGET_DATE,
+        date=date_suffix,
         freq=EXPECTED_FREQ_MIN,
         target_count=EXPECTED_COUNT,
-        total=len(meters_df),
+        total=len(meters),
         dead=dead_count,
         low_perf=low_perf_count,
         perfect=perfect_count,
-        energy_comparison_section=energy_comparison_section,
         gap_table=html_table
     )
 
-    os.makedirs(os.path.dirname(REPORT_FILE), exist_ok=True)
-    with open(REPORT_FILE, "w", encoding="utf-8") as f:
+    with open(report_file, "w", encoding="utf-8") as f:
         f.write(final_html)
 
-    print(f"Success! Report generated: {REPORT_FILE}")
-    webbrowser.open('file://' + os.path.realpath(REPORT_FILE))
+    print(f"Success! Report generated: {report_file}")
+    
+    try:
+        webbrowser.open('file://' + os.path.realpath(report_file))
+    except:
+        pass
 
 if __name__ == "__main__":
-    generate_report()
+    import argparse
+    parser = argparse.ArgumentParser(description="Generate a daily frequency report.")
+    parser.add_argument("--date", type=str, default=TARGET_DATE, help="Target Date Suffix (YYMMDD, e.g., 260202)")
+    args = parser.parse_args()
+    
+    run_daily_report(args.date)
