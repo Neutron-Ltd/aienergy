@@ -7,7 +7,7 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 JSON_FILE = os.path.join(SCRIPT_DIR, "..", "relation.json")
 # Output to nodes/data/info.html
 OUTPUT_DIR = os.path.join(SCRIPT_DIR, "data")
-OUTPUT_FILE = os.path.join(OUTPUT_DIR, "info.html")
+OUTPUT_FILE = os.path.join(OUTPUT_DIR, "meterinfo.html")
 
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
