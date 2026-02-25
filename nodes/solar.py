@@ -22,23 +22,22 @@ OUTPUT_DIR = os.path.join(SCRIPT_DIR, "data")
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 def get_renewable_nodes(node, target_list=None):
-    """Recursively searches relation.json for Solar PV and Energy Storage nodes."""
+    """Recursively searches relation.json for Solar PV nodes only."""
     if target_list is None:
         target_list = []
     
     category = node.get("category", "").lower()
     
-    # Identify if the node is a renewable/storage source
-    if "pv" in category or "solar" in category or "storage" in category or "battery" in category:
+    # Identify if the node is a solar PV source
+    if "pv" in category or "solar" in category:
         if "id" in node:
-            is_solar = "pv" in category or "solar" in category
             target_list.append({
                 "id": node["id"],
                 "name": node.get("name", f"Node {node['id']}"),
                 "category": category,
-                "type": "Solar PV" if is_solar else "Energy Storage",
-                "color": "emerald" if is_solar else "indigo",
-                "icon": "☀️" if is_solar else "🔋"
+                "type": "Solar PV",
+                "color": "emerald",
+                "icon": "☀️"
             })
             
     for sub in node.get("sub_nodes", []):
@@ -48,7 +47,7 @@ def get_renewable_nodes(node, target_list=None):
 
 def main(date_suffix):
     report_file = os.path.join(OUTPUT_DIR, f"solar-{date_suffix}.html")
-    print(f"⚡ Generating Renewables & Storage Audit for 20{date_suffix}...")
+    print(f"⚡ Generating Solar Generation Audit for 20{date_suffix}...")
 
     # 1. Load Topology
     try:
@@ -57,7 +56,7 @@ def main(date_suffix):
         target_nodes = get_renewable_nodes(tree_data.get("root_node", {}))
         
         if not target_nodes:
-            print("❌ No Solar PV or Energy Storage nodes found in relation.json.")
+            print("❌ No Solar PV nodes found in relation.json.")
             return
     except Exception as e:
         print(f"❌ JSON Error: {e}")
@@ -129,21 +128,13 @@ def main(date_suffix):
                 missing_slots_text = "None"
 
             # INTEGRATION MATH: Power -> Energy
-            # We now know Pt is positive, so we calculate absolute Yield directly.
             df['Real_Pt'] = df['Pt'] * ratio
             df['Interval_kWh'] = df['Real_Pt'] * (median_interval / 60.0)
             
-            if node['type'] == 'Solar PV':
-                daily_kwh = df['Interval_kWh'].sum()
-                kwh_display = f"{daily_kwh:,.1f}"
-                kwh_label = "Daily Generation"
-                kwh_desc = f"Absolute Yield × {ratio}"
-            else:
-                # Storage: Since Pt doesn't go negative, we calculate Gross Flow.
-                total_flow = df['Interval_kWh'].sum()
-                kwh_display = f"<span class='text-indigo-400 text-2xl'>{total_flow:,.1f}</span>"
-                kwh_label = "Gross Energy Flow"
-                kwh_desc = f"Absolute Activity × {ratio}"
+            daily_kwh = df['Interval_kWh'].sum()
+            kwh_display = f"{daily_kwh:,.1f}"
+            kwh_label = "Daily Generation"
+            kwh_desc = f"Absolute Yield × {ratio}"
 
             # Prepare for unified table
             df['node_name'] = name
@@ -235,7 +226,7 @@ def main(date_suffix):
     <!DOCTYPE html>
     <html lang="en">
     <head>
-        <meta charset="UTF-8"><title>Solar & Storage - 20{date_suffix}</title>
+        <meta charset="UTF-8"><title>Solar Generation - 20{date_suffix}</title>
         <script src="https://cdn.tailwindcss.com"></script>
         <style>
             ::-webkit-scrollbar {{ width: 8px; height: 8px; }}
@@ -254,7 +245,7 @@ def main(date_suffix):
             
             <header class="bg-white p-8 rounded-2xl shadow-sm border border-slate-200 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                 <div>
-                    <h1 class="text-3xl font-black text-slate-900">Renewables & Storage Audit</h1>
+                    <h1 class="text-3xl font-black text-slate-900">Solar Generation Audit</h1>
                     <p class="text-slate-500 font-medium italic mt-1">Active Power (Pt) Integration Audit | Target: <span class="font-mono text-slate-700">20{date_suffix}</span></p>
                 </div>
             </header>
@@ -279,7 +270,7 @@ def main(date_suffix):
                             </tr>
                         </thead>
                         <tbody class="divide-y divide-slate-100">
-                            {rows_html if rows_html else "<tr><td colspan='5' class='p-12 text-center text-slate-400'>No generation or storage data found within the 24-hour boundary.</td></tr>"}
+                            {rows_html if rows_html else "<tr><td colspan='5' class='p-12 text-center text-slate-400'>No solar generation data found within the 24-hour boundary.</td></tr>"}
                         </tbody>
                     </table>
                 </div>
@@ -295,7 +286,7 @@ def main(date_suffix):
     
     with open(report_file, "w", encoding="utf-8") as f:
         f.write(html_content)
-    print(f"✅ Success: Solar & Storage Audit for 20{date_suffix} generated at {report_file}")
+    print(f"✅ Success: Solar Generation Audit for 20{date_suffix} generated at {report_file}")
     webbrowser.open(Path(report_file).resolve().as_uri())
 
 if __name__ == "__main__":

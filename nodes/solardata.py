@@ -22,16 +22,15 @@ OUTPUT_DIR = os.path.join(SCRIPT_DIR, "data")
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 def get_renewable_nodes(node, target_list=None):
-    """Recursively searches relation.json for Solar PV and Energy Storage nodes."""
+    """Recursively searches relation.json for Solar PV nodes only."""
     if target_list is None: target_list = []
     category = node.get("category", "").lower()
-    if any(k in category for k in ["pv", "solar", "storage", "battery"]):
+    if any(k in category for k in ["pv", "solar"]):
         if "id" in node:
-            is_solar = any(k in category for k in ["pv", "solar"])
             target_list.append({
                 "id": node["id"], 
                 "name": node.get("name", f"Node {node['id']}"),
-                "type": "Solar PV" if is_solar else "Energy Storage"
+                "type": "Solar PV"
             })
     for sub in node.get("sub_nodes", []):
         get_renewable_nodes(sub, target_list)
@@ -62,7 +61,6 @@ def main(start_date, days):
     # Data Structure and Aggregates
     results = {n['id']: {d: {"yield": 0, "health": 0} for d in dates} for n in target_nodes}
     total_weekly_solar = 0
-    total_weekly_storage = 0
     total_logs_act = 0
     total_logs_exp = 0
 
@@ -92,9 +90,7 @@ def main(start_date, days):
                     health = (act_count / exp_count) * 100
                     
                     results[nid][date_str] = {"yield": daily_kwh, "health": health}
-                    
-                    if node['type'] == "Solar PV": total_weekly_solar += daily_kwh
-                    else: total_weekly_storage += daily_kwh
+                    total_weekly_solar += daily_kwh
                     
                     total_logs_act += act_count
                     total_logs_exp += exp_count
@@ -118,7 +114,7 @@ def main(start_date, days):
     <!DOCTYPE html>
     <html lang="en">
     <head>
-        <meta charset="UTF-8"><title>AIENERGY - Renewable Summary</title>
+        <meta charset="UTF-8"><title>AIENERGY - Solar Generation Summary</title>
         <script src="https://cdn.tailwindcss.com"></script>
         <style>
             ::-webkit-scrollbar {{ width: 8px; height: 8px; }}
@@ -131,22 +127,18 @@ def main(start_date, days):
     <body class="bg-slate-100 min-h-screen font-sans text-slate-900 pb-12">
         <div class="max-w-[1600px] mx-auto mt-8 px-6 space-y-8">
             <header class="bg-white p-8 rounded-2xl shadow-sm border border-slate-200 flex justify-between items-center">
-                <div><h1 class="text-3xl font-black">Renewables & Storage</h1><p class="text-slate-500 font-medium italic mt-1">{days}-Day Executive Summary | <span class="font-mono">20{start_date} - 20{end_date_str}</span></p></div>
+                <div><h1 class="text-3xl font-black">Solar Generation</h1><p class="text-slate-500 font-medium italic mt-1">{days}-Day Executive Summary | <span class="font-mono">20{start_date} - 20{end_date_str}</span></p></div>
                 <div class="bg-slate-100 p-3 rounded-lg border border-slate-200 text-right"><div class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Nodes Tracked</div><div class="text-xl font-black text-blue-600">{len(target_nodes)} Devices</div></div>
             </header>
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
                     <span class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Aggregate Reliability</span>
                     <div class="text-3xl font-black text-slate-800 mt-1">{overall_rel:.1f}%</div>
-                    <div class="w-full bg-slate-100 h-1.5 rounded-full mt-3 overflow-hidden"><div class="bg-indigo-500 h-full" style="width: {overall_rel}%"></div></div>
+                    <div class="w-full bg-slate-100 h-1.5 rounded-full mt-3 overflow-hidden"><div class="bg-emerald-500 h-full" style="width: {overall_rel}%"></div></div>
                 </div>
                 <div class="bg-emerald-900 p-6 rounded-2xl shadow-xl text-white">
                     <span class="text-[10px] font-bold text-emerald-300 uppercase tracking-widest text-opacity-80">Total Solar Generation</span>
                     <div class="text-3xl font-black mt-1 text-emerald-50">{total_weekly_solar:,.1f} <span class="text-sm font-light">kWh</span></div>
-                </div>
-                <div class="bg-indigo-900 p-6 rounded-2xl shadow-xl text-white">
-                    <span class="text-[10px] font-bold text-indigo-300 uppercase tracking-widest text-opacity-80">Total Storage Flow</span>
-                    <div class="text-3xl font-black mt-1 text-indigo-50">{total_weekly_storage:,.1f} <span class="text-sm font-light">kWh</span></div>
                 </div>
             </div>
             <section class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
@@ -158,7 +150,7 @@ def main(start_date, days):
                 </table>
                 </div>
             </section>
-            <footer class="text-center text-slate-400 text-[10px] py-4">Generated by AIENERGY System • Unified Renewables Report</footer>
+            <footer class="text-center text-slate-400 text-[10px] py-4">Generated by AIENERGY System • Solar Generation Report</footer>
         </div>
     </body>
     </html>"""

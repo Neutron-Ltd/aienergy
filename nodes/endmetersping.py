@@ -157,6 +157,21 @@ def main(start_date, days):
         print(f"❌ Database Error: {e}")
         return
 
+    # --- STATISTICS ---
+    total_logs_act = 0
+    total_logs_exp = 0
+    meter_days_with_data = 0
+    for nid in data_matrix:
+        for d in dates:
+            cell = data_matrix[nid][d]
+            if cell and cell.get('actual', 0) > 0:
+                total_logs_act += cell['actual']
+                total_logs_exp += cell['expected']
+                meter_days_with_data += 1
+    overall_rel = (total_logs_act / total_logs_exp * 100) if total_logs_exp > 0 else 0
+    total_cells = len(end_nodes) * len(dates)
+    coverage_pct = (meter_days_with_data / total_cells * 100) if total_cells > 0 else 0
+
     # --- UI GENERATION ---
     date_headers = "".join([f"<th class='px-3 py-4 border-b border-slate-200 text-center text-xs font-bold text-slate-600 bg-slate-50'>{d}</th>" for d in dates])
     
@@ -196,19 +211,36 @@ def main(start_date, days):
         </style>
     </head>
     <body class="bg-slate-100 min-h-screen font-sans text-slate-900 pb-12">
-        <div class="max-w-[1600px] mx-auto mt-8 px-6">
-            
-            <header class="mb-8 flex flex-col md:flex-row justify-between items-start md:items-end gap-4">
+        <div class="max-w-[1600px] mx-auto mt-8 px-6 space-y-8">
+            <header class="bg-white p-8 rounded-2xl shadow-sm border border-slate-200 flex justify-between items-center">
                 <div>
                     <h1 class="text-3xl font-black text-slate-900">7-Day End Meter Continuity Matrix</h1>
-                    <p class="text-slate-500 mt-2 text-sm">Tracking data frequency and detection intervals for <strong class="text-slate-700">Leaf Nodes Only</strong> across the target week.</p>
+                    <p class="text-slate-500 mt-2 text-sm">Tracking data frequency and detection intervals for <strong class="text-slate-700">Leaf Nodes Only</strong> | <span class="font-mono">20{start_date} - 20{end_date_str}</span></p>
                 </div>
-                <div class="flex gap-3 text-[10px] uppercase font-bold tracking-widest">
-                    <span class="px-3 py-2 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded flex items-center gap-2 shadow-sm"><span class="w-2 h-2 rounded-full bg-emerald-500"></span> > 95% Health</span>
-                    <span class="px-3 py-2 bg-amber-50 text-amber-700 border border-amber-300 rounded flex items-center gap-2 shadow-sm"><span class="w-2 h-2 rounded-full bg-amber-500"></span> 50-94% Health</span>
-                    <span class="px-3 py-2 bg-rose-50 text-rose-700 border border-rose-200 rounded flex items-center gap-2 shadow-sm"><span class="w-2 h-2 rounded-full bg-rose-500"></span> < 50% Health</span>
+                <div class="flex items-center gap-6">
+                    <div class="bg-slate-100 p-3 rounded-lg border border-slate-200 text-right">
+                        <div class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">End Meters Tracked</div>
+                        <div class="text-xl font-black text-slate-700">{len(end_nodes)} Nodes</div>
+                    </div>
+                    <div class="flex gap-3 text-[10px] uppercase font-bold tracking-widest">
+                        <span class="px-3 py-2 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded flex items-center gap-2 shadow-sm"><span class="w-2 h-2 rounded-full bg-emerald-500"></span> > 95%</span>
+                        <span class="px-3 py-2 bg-amber-50 text-amber-700 border border-amber-300 rounded flex items-center gap-2 shadow-sm"><span class="w-2 h-2 rounded-full bg-amber-500"></span> 50-94%</span>
+                        <span class="px-3 py-2 bg-rose-50 text-rose-700 border border-rose-200 rounded flex items-center gap-2 shadow-sm"><span class="w-2 h-2 rounded-full bg-rose-500"></span> < 50%</span>
+                    </div>
                 </div>
             </header>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+                    <span class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Aggregate Reliability</span>
+                    <div class="text-3xl font-black text-slate-800 mt-1">{overall_rel:.1f}%</div>
+                    <div class="w-full bg-slate-100 h-1.5 rounded-full mt-3 overflow-hidden"><div class="bg-slate-700 h-full" style="width: {overall_rel}%"></div></div>
+                </div>
+                <div class="bg-slate-900 p-6 rounded-2xl shadow-xl text-white">
+                    <span class="text-[10px] font-bold text-slate-400 uppercase tracking-widest text-opacity-80">Meter-Days With Data</span>
+                    <div class="text-3xl font-black mt-1 text-white">{meter_days_with_data}<span class="text-slate-400 font-normal"> / {total_cells}</span> <span class="text-sm font-light text-slate-400">({coverage_pct:.0f}%)</span></div>
+                </div>
+            </div>
 
             <section class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden mb-8">
                 <div class="bg-slate-900 p-4 flex justify-between items-center text-white">
