@@ -94,7 +94,7 @@ def build_status_ui(status):
         return '<div class="mx-auto w-5 h-5 rounded bg-slate-100 text-slate-300 flex items-center justify-center font-bold text-[10px]">-</div>'
 
 def main(date_suffix):
-    report_file = os.path.join(OUTPUT_DIR, f"meterdata-{date_suffix}.html")
+    report_file = os.path.join(OUTPUT_DIR, f"meterping-{date_suffix}.html")
     print(f"Starting Universal Data Matrix for 20{date_suffix}...")
 
     # 1. Load Topology
