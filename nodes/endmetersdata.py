@@ -116,7 +116,7 @@ def main(start_date, days):
             data = results[meter['id']][d]
             h_color = "text-emerald-600 font-bold" if data['health'] > 95 else "text-amber-600" if data['health'] > 0 else "text-slate-300"
             cells += f"""<td class='p-2 border-b text-center'><div class='text-xs font-bold'>{data['kwh']:,.1f}</div><div class='text-[8px] font-mono {h_color}'>{data['health']:.0f}%</div></td>"""
-        rows_html += f"""<tr class='hover:bg-slate-50 transition-colors bg-white'><td class='p-3 border-b font-mono text-[10px] text-slate-400'>ID:{meter['id']}</td><td class='p-3 border-b text-xs font-bold text-slate-700 leading-tight'>{meter['name']}</td><td class='p-3 border-b text-[10px] text-slate-400 uppercase'>{meter['category']}</td>{cells}</tr>"""
+        rows_html += f"""<tr class='hover:bg-slate-50 transition-colors bg-white'><td class='p-3 border-b font-mono text-[10px] text-slate-400'>ID:{meter['id']}</td><td class='p-3 border-b text-xs font-bold text-slate-700 leading-tight'>{meter['name']}</td>{cells}</tr>"""
 
     html_content = f"""
     <!DOCTYPE html>
@@ -153,7 +153,7 @@ def main(start_date, days):
                 <div class="bg-slate-900 p-4 text-white flex justify-between items-center"><h3 class="font-bold text-xs uppercase tracking-widest">Daily Consumption Matrix</h3><span class="text-[10px] text-slate-400 font-mono">Formula: Pt Integration (Sources Excluded)</span></div>
                 <div class="overflow-x-auto">
                 <table class="w-full text-left border-collapse min-w-max">
-                    <thead><tr><th class="p-3 border-b text-xs font-bold text-slate-500 bg-slate-50 w-16">Node</th><th class="p-3 border-b text-xs font-bold text-slate-500 bg-slate-50">Machine Name</th><th class="p-3 border-b text-xs font-bold text-slate-500 bg-slate-50">Category</th>{date_headers}</tr></thead>
+                    <thead><tr><th class="p-3 border-b text-xs font-bold text-slate-500 bg-slate-50 w-16">Node</th><th class="p-3 border-b text-xs font-bold text-slate-500 bg-slate-50">Machine Name</th>{date_headers}</tr></thead>
                     <tbody class="divide-y divide-slate-100">{rows_html}</tbody>
                 </table>
                 </div>

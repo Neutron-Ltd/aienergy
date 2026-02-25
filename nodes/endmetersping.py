@@ -176,7 +176,6 @@ def main(start_date, days):
         <tr class="hover:bg-slate-50 transition-colors bg-white">
             <td class="px-4 py-3 border-b border-slate-100 font-mono text-xs text-slate-500 w-16 align-middle">ID:{nid}</td>
             <td class="px-4 py-3 border-b border-slate-100 text-xs text-slate-800 font-medium align-middle whitespace-normal min-w-[200px] leading-tight">{node['name']}</td>
-            <td class="px-4 py-3 border-b border-slate-100 text-[10px] uppercase text-slate-400 tracking-widest align-middle">{node['category']}</td>
             {cells}
         </tr>"""
 
@@ -232,7 +231,6 @@ def main(start_date, days):
                             <tr>
                                 <th class="px-4 py-4 border-b border-slate-200 text-xs font-bold text-slate-600 bg-slate-50 w-16">Node</th>
                                 <th class="px-4 py-4 border-b border-slate-200 text-xs font-bold text-slate-600 bg-slate-50">Hardware Name</th>
-                                <th class="px-4 py-4 border-b border-slate-200 text-xs font-bold text-slate-600 bg-slate-50">Category</th>
                                 {date_headers}
                             </tr>
                         </thead>
