@@ -1,5 +1,7 @@
 import os
 import argparse
+import webbrowser
+from pathlib import Path
 import mysql.connector
 import json
 from datetime import datetime
@@ -175,7 +177,7 @@ def main(date_suffix):
     </head>
     <body class="bg-slate-100 min-h-screen font-sans text-slate-900 pb-12">
         
-        <div class="max-w-[1600px] mx-auto mt-8 px-4">
+        <div class="max-w-[1600px] mx-auto mt-8 px-6">
             <header class="mb-8">
                 <h1 class="text-3xl font-black text-slate-900">Universal Column Ping Test</h1>
                 <p class="text-slate-500 mt-2 text-sm">Target Table: <code class="bg-slate-200 px-2 py-1 rounded">site_power_{date_suffix}</code> | No exceptions. All JSON nodes scanned.</p>
@@ -215,6 +217,7 @@ def main(date_suffix):
     with open(report_file, "w", encoding="utf-8") as f:
         f.write(html_content)
     print(f"✅ AIENERGY Data Matrix generated successfully at: {report_file}")
+    webbrowser.open(Path(report_file).resolve().as_uri())
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()

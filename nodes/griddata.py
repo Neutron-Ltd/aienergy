@@ -1,5 +1,7 @@
 import os
 import argparse
+import webbrowser
+from pathlib import Path
 import mysql.connector
 import pandas as pd
 import json
@@ -151,15 +153,19 @@ def main(start_date, days, target_id=1):
         <meta charset="UTF-8"><title>{display_title} - {days} Day Grid Summary</title>
         <script src="https://cdn.tailwindcss.com"></script>
         <style>
+            ::-webkit-scrollbar {{ width: 8px; height: 8px; }}
+            ::-webkit-scrollbar-track {{ background: #f8fafc; }}
+            ::-webkit-scrollbar-thumb {{ background: #cbd5e1; border-radius: 4px; }}
+            ::-webkit-scrollbar-thumb:hover {{ background: #94a3b8; }}
             @media print {{
-                @page {{ size: portrait; margin: 15mm; }}
+                @page {{ size: landscape; margin: 10mm; }}
                 body {{ background: white; }}
                 .shadow-sm, .shadow-xl {{ box-shadow: none !important; border: 1px solid #e2e8f0 !important; }}
             }}
         </style>
     </head>
-    <body class="bg-slate-50 min-h-screen p-4 md:p-8 text-slate-900 font-sans">
-        <div class="max-w-4xl mx-auto space-y-8">
+    <body class="bg-slate-100 min-h-screen font-sans text-slate-900 pb-12">
+        <div class="max-w-[1600px] mx-auto mt-8 px-6 space-y-8">
             
             <header class="bg-white p-8 rounded-2xl shadow-sm border border-slate-200 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                 <div>
@@ -226,6 +232,7 @@ def main(start_date, days, target_id=1):
     with open(report_file, "w", encoding="utf-8") as f:
         f.write(html_content)
     print(f"✅ Success: Executive Summary generated at {report_file}")
+    webbrowser.open(Path(report_file).resolve().as_uri())
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()

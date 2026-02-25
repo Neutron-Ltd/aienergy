@@ -1,5 +1,7 @@
 import os
 import json
+import webbrowser
+from pathlib import Path
 
 # --- DIRECTORY CONFIGURATION ---
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -103,16 +105,20 @@ def main():
         <script src="https://cdn.tailwindcss.com"></script>
         <style>
             .inset-shadow {{ box-shadow: inset 0 2px 4px 0 rgba(0, 0, 0, 0.02); }}
-            /* Custom scrollbar */
             ::-webkit-scrollbar {{ width: 8px; height: 8px; }}
             ::-webkit-scrollbar-track {{ background: #f8fafc; }}
             ::-webkit-scrollbar-thumb {{ background: #cbd5e1; border-radius: 4px; }}
             ::-webkit-scrollbar-thumb:hover {{ background: #94a3b8; }}
+            @media print {{
+                @page {{ size: landscape; margin: 10mm; }}
+                body {{ background: white; }}
+                .shadow-sm {{ box-shadow: none; border-color: #e2e8f0; }}
+            }}
         </style>
     </head>
     <body class="bg-slate-100 min-h-screen font-sans text-slate-900 pb-12">
         
-        <div class="max-w-7xl mx-auto mt-8 px-4">
+        <div class="max-w-[1600px] mx-auto mt-8 px-6">
             <header class="mb-8 flex justify-between items-end">
                 <div>
                     <h1 class="text-3xl font-black text-slate-900">Hierarchical Network Info</h1>
@@ -134,8 +140,9 @@ def main():
 
     with open(OUTPUT_FILE, "w", encoding="utf-8") as f:
         f.write(html_content)
-    
+
     print(f"✅ AIENERGY UI Topology Report generated successfully at: {OUTPUT_FILE}")
+    webbrowser.open(Path(OUTPUT_FILE).resolve().as_uri())
 
 if __name__ == "__main__":
     main()

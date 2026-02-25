@@ -1,5 +1,7 @@
 import os
 import argparse
+import webbrowser
+from pathlib import Path
 import mysql.connector
 import pandas as pd
 import json
@@ -128,6 +130,10 @@ def main(date_suffix, target_id=1):
         <meta charset="UTF-8"><title>{display_title} - Grid Audit</title>
         <script src="https://cdn.tailwindcss.com"></script>
         <style>
+            ::-webkit-scrollbar {{ width: 8px; height: 8px; }}
+            ::-webkit-scrollbar-track {{ background: #f8fafc; }}
+            ::-webkit-scrollbar-thumb {{ background: #cbd5e1; border-radius: 4px; }}
+            ::-webkit-scrollbar-thumb:hover {{ background: #94a3b8; }}
             @media print {{
                 @page {{ size: landscape; margin: 10mm; }}
                 body {{ background: white; }}
@@ -135,8 +141,8 @@ def main(date_suffix, target_id=1):
             }}
         </style>
     </head>
-    <body class="bg-slate-50 min-h-screen p-4 md:p-8 text-slate-900 font-sans">
-        <div class="max-w-6xl mx-auto space-y-8">
+    <body class="bg-slate-100 min-h-screen font-sans text-slate-900 pb-12">
+        <div class="max-w-[1600px] mx-auto mt-8 px-6 space-y-8">
             
             <header class="bg-white p-8 rounded-2xl shadow-sm border border-slate-200 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                 <div>
@@ -182,8 +188,8 @@ def main(date_suffix, target_id=1):
             </div>
 
             <section class="bg-white rounded-2xl shadow-sm border border-slate-200">
-                <div class="bg-slate-50 p-4 border-b border-slate-200 rounded-t-2xl flex justify-between items-center">
-                    <h3 class="font-bold text-xs uppercase text-slate-700 tracking-widest">Odometer Log History</h3>
+                <div class="bg-slate-900 p-4 text-white border-b border-slate-700 rounded-t-2xl flex justify-between items-center">
+                    <h3 class="font-bold text-xs uppercase tracking-widest">Odometer Log History</h3>
                     <span class="text-[10px] font-mono text-slate-400">Source Table: site_energy_{date_suffix}</span>
                 </div>
                 
@@ -216,6 +222,7 @@ def main(date_suffix, target_id=1):
     with open(report_file, "w", encoding="utf-8") as f:
         f.write(html_content)
     print(f"✅ Success: Report generated at {report_file}")
+    webbrowser.open(Path(report_file).resolve().as_uri())
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()

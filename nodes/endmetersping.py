@@ -1,5 +1,7 @@
 import os
 import argparse
+import webbrowser
+from pathlib import Path
 import mysql.connector
 import json
 import pandas as pd
@@ -182,16 +184,19 @@ def main(start_date, days):
         <meta charset="UTF-8"><title>AIENERGY - 7-Day End Meter Continuity</title>
         <script src="https://cdn.tailwindcss.com"></script>
         <style>
-            /* Print settings optimized for large tables */
+            ::-webkit-scrollbar {{ width: 8px; height: 8px; }}
+            ::-webkit-scrollbar-track {{ background: #f8fafc; }}
+            ::-webkit-scrollbar-thumb {{ background: #cbd5e1; border-radius: 4px; }}
+            ::-webkit-scrollbar-thumb:hover {{ background: #94a3b8; }}
             @media print {{
-                @page {{ size: landscape; margin: 5mm; }}
+                @page {{ size: landscape; margin: 10mm; }}
                 body {{ background: white; -webkit-print-color-adjust: exact; }}
                 .shadow-sm {{ box-shadow: none; border-color: #e2e8f0; }}
             }}
         </style>
     </head>
     <body class="bg-slate-100 min-h-screen font-sans text-slate-900 pb-12">
-        <div class="max-w-[1800px] mx-auto mt-8 px-4">
+        <div class="max-w-[1600px] mx-auto mt-8 px-6">
             
             <header class="mb-8 flex flex-col md:flex-row justify-between items-start md:items-end gap-4">
                 <div>
@@ -205,7 +210,7 @@ def main(start_date, days):
                 </div>
             </header>
 
-            <section class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden mb-8">
+            <section class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden mb-8">
                 <div class="bg-slate-900 p-4 flex justify-between items-center text-white">
                     <div>
                         <h2 class="text-lg font-bold tracking-widest">Hardware Telemetry Timeline</h2>
@@ -240,6 +245,7 @@ def main(start_date, days):
     with open(report_file, "w", encoding="utf-8") as f:
         f.write(html_content)
     print(f"✅ Success! 7-Day Continuity Matrix generated at: {report_file}")
+    webbrowser.open(Path(report_file).resolve().as_uri())
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()

@@ -1,5 +1,7 @@
 import os
 import argparse
+import webbrowser
+from pathlib import Path
 import mysql.connector
 import pandas as pd
 import json
@@ -112,10 +114,16 @@ def main(start_date, days):
     <head>
         <meta charset="UTF-8"><title>AIENERGY - End Meter Weekly Consumption</title>
         <script src="https://cdn.tailwindcss.com"></script>
-        <style> @media print {{ @page {{ size: landscape; margin: 10mm; }} body {{ background: white; }} .shadow-sm, .shadow-xl {{ box-shadow: none !important; border: 1px solid #e2e8f0 !important; }} }} </style>
+        <style>
+            ::-webkit-scrollbar {{ width: 8px; height: 8px; }}
+            ::-webkit-scrollbar-track {{ background: #f8fafc; }}
+            ::-webkit-scrollbar-thumb {{ background: #cbd5e1; border-radius: 4px; }}
+            ::-webkit-scrollbar-thumb:hover {{ background: #94a3b8; }}
+            @media print {{ @page {{ size: landscape; margin: 10mm; }} body {{ background: white; }} .shadow-sm, .shadow-xl {{ box-shadow: none !important; border: 1px solid #e2e8f0 !important; }} }}
+        </style>
     </head>
-    <body class="bg-slate-50 min-h-screen p-8 text-slate-900 font-sans">
-        <div class="max-w-[1600px] mx-auto space-y-8">
+    <body class="bg-slate-100 min-h-screen font-sans text-slate-900 pb-12">
+        <div class="max-w-[1600px] mx-auto mt-8 px-6 space-y-8">
             <header class="bg-white p-8 rounded-2xl shadow-sm border border-slate-200 flex justify-between items-center">
                 <div><h1 class="text-3xl font-black">Machine Consumption Matrix</h1><p class="text-slate-500 font-medium italic mt-1">{days}-Day End-Use Audit | <span class="font-mono">20{start_date} - Range</span></p></div>
                 <div class="text-right"><div class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">End Meters Scanned</div><div class="text-xl font-black text-indigo-600">{len(end_meters)} Machines</div></div>
@@ -132,17 +140,21 @@ def main(start_date, days):
                 </div>
             </div>
             <section class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-                <div class="bg-slate-800 p-4 text-white flex justify-between items-center"><h3 class="font-bold text-xs uppercase tracking-widest">Daily Consumption Matrix</h3><span class="text-[10px] text-slate-400">Values: Daily Consumption (kWh) / Log Health</span></div>
-                <table class="w-full text-left border-collapse">
+                <div class="bg-slate-900 p-4 text-white flex justify-between items-center"><h3 class="font-bold text-xs uppercase tracking-widest">Daily Consumption Matrix</h3><span class="text-[10px] text-slate-400">Values: Daily Consumption (kWh) / Log Health</span></div>
+                <div class="overflow-x-auto">
+                <table class="w-full text-left border-collapse min-w-max">
                     <thead><tr><th class="p-3 border-b text-xs font-bold text-slate-500 bg-slate-50 w-16">Node</th><th class="p-3 border-b text-xs font-bold text-slate-500 bg-slate-50">Machine Name</th><th class="p-3 border-b text-xs font-bold text-slate-500 bg-slate-50">Category</th>{date_headers}</tr></thead>
                     <tbody class="divide-y divide-slate-100">{rows_html}</tbody>
                 </table>
+                </div>
             </section>
         </div>
     </body>
     </html>"""
-    with open(report_file, "w", encoding="utf-8") as f: f.write(html_content)
+    with open(report_file, "w", encoding="utf-8") as f:
+        f.write(html_content)
     print(f"✅ Weekly End-Meter Report generated: {report_file}")
+    webbrowser.open(Path(report_file).resolve().as_uri())
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
