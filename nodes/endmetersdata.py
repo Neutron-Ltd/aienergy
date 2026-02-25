@@ -16,20 +16,27 @@ DB_CONFIG = {
     "database": "unified"
 }
 
+# IDs to explicitly exclude from consumption reports (Solar and Storage)
+EXCLUDED_IDS = [56, 29, 31, 30]
+
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 JSON_FILE = os.path.join(SCRIPT_DIR, "..", "relation.json")
 OUTPUT_DIR = os.path.join(SCRIPT_DIR, "data")
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 def get_end_meters(node, end_meter_list=None):
-    """Recursively extracts ONLY nodes with no sub_nodes (Leaf Nodes)."""
+    """Recursively extracts ONLY nodes with no sub_nodes, excluding specific IDs and ID-less nodes."""
     if end_meter_list is None: end_meter_list = []
+    
     sub_nodes = node.get("sub_nodes", [])
+    node_id = node.get("id")
+
     if not sub_nodes:
-        if "id" in node:
+        # Check if node has a valid ID and is not in the exclusion list
+        if node_id is not None and node_id not in EXCLUDED_IDS:
             end_meter_list.append({
-                "id": node["id"],
-                "name": node.get("name", f"Node {node['id']}"),
+                "id": node_id,
+                "name": node.get("name", f"Node {node_id}"),
                 "category": node.get("category", "Unknown")
             })
     else:
@@ -51,6 +58,9 @@ def main(start_date, days):
         end_meters = get_end_meters(tree_data.get("root_node", {}))
     except Exception as e:
         print(f"❌ JSON Error: {e}"); return
+
+    if not end_meters:
+        print("❌ No valid end meters found after filtering."); return
 
     try:
         conn = mysql.connector.connect(**DB_CONFIG)
@@ -83,7 +93,7 @@ def main(start_date, days):
                     median_int = df['ts'].diff().dt.total_seconds().median() / 60 or 15
                     if median_int <= 0: median_int = 15
                     
-                    # Energy Integration Math
+                    # Energy Integration Math: Pt snapshot to kWh
                     daily_kwh = (pd.to_numeric(df['Pt']).sum() * ratio) * (median_int / 60.0)
                     exp_count = 1440 // median_int
                     act_count = len(df)
@@ -106,7 +116,7 @@ def main(start_date, days):
             data = results[meter['id']][d]
             h_color = "text-emerald-600 font-bold" if data['health'] > 95 else "text-amber-600" if data['health'] > 0 else "text-slate-300"
             cells += f"""<td class='p-2 border-b text-center'><div class='text-xs font-bold'>{data['kwh']:,.1f}</div><div class='text-[8px] font-mono {h_color}'>{data['health']:.0f}%</div></td>"""
-        rows_html += f"""<tr class='hover:bg-slate-50'><td class='p-3 border-b font-mono text-[10px] text-slate-400'>ID:{meter['id']}</td><td class='p-3 border-b text-xs font-bold text-slate-700 leading-tight'>{meter['name']}</td><td class='p-3 border-b text-[10px] text-slate-400 uppercase'>{meter['category']}</td>{cells}</tr>"""
+        rows_html += f"""<tr class='hover:bg-slate-50 transition-colors bg-white'><td class='p-3 border-b font-mono text-[10px] text-slate-400'>ID:{meter['id']}</td><td class='p-3 border-b text-xs font-bold text-slate-700 leading-tight'>{meter['name']}</td><td class='p-3 border-b text-[10px] text-slate-400 uppercase'>{meter['category']}</td>{cells}</tr>"""
 
     html_content = f"""
     <!DOCTYPE html>
@@ -125,7 +135,7 @@ def main(start_date, days):
     <body class="bg-slate-100 min-h-screen font-sans text-slate-900 pb-12">
         <div class="max-w-[1600px] mx-auto mt-8 px-6 space-y-8">
             <header class="bg-white p-8 rounded-2xl shadow-sm border border-slate-200 flex justify-between items-center">
-                <div><h1 class="text-3xl font-black">Machine Consumption Matrix</h1><p class="text-slate-500 font-medium italic mt-1">{days}-Day End-Use Audit | <span class="font-mono">20{start_date} - Range</span></p></div>
+                <div><h1 class="text-3xl font-black">Machine Consumption Matrix</h1><p class="text-slate-500 font-medium italic mt-1">{days}-Day End-Use Audit | Sources Excluded | <span class="font-mono">20{start_date} - Range</span></p></div>
                 <div class="text-right"><div class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">End Meters Scanned</div><div class="text-xl font-black text-indigo-600">{len(end_meters)} Machines</div></div>
             </header>
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -140,7 +150,7 @@ def main(start_date, days):
                 </div>
             </div>
             <section class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-                <div class="bg-slate-900 p-4 text-white flex justify-between items-center"><h3 class="font-bold text-xs uppercase tracking-widest">Daily Consumption Matrix</h3><span class="text-[10px] text-slate-400">Values: Daily Consumption (kWh) / Log Health</span></div>
+                <div class="bg-slate-900 p-4 text-white flex justify-between items-center"><h3 class="font-bold text-xs uppercase tracking-widest">Daily Consumption Matrix</h3><span class="text-[10px] text-slate-400 font-mono">Formula: Pt Integration (Sources Excluded)</span></div>
                 <div class="overflow-x-auto">
                 <table class="w-full text-left border-collapse min-w-max">
                     <thead><tr><th class="p-3 border-b text-xs font-bold text-slate-500 bg-slate-50 w-16">Node</th><th class="p-3 border-b text-xs font-bold text-slate-500 bg-slate-50">Machine Name</th><th class="p-3 border-b text-xs font-bold text-slate-500 bg-slate-50">Category</th>{date_headers}</tr></thead>

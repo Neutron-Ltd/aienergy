@@ -16,25 +16,33 @@ DB_CONFIG = {
     "database": "unified"
 }
 
+# IDs to explicitly exclude from End Meter reports (Solar and Storage)
+EXCLUDED_IDS = [56, 29, 31, 30]
+
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 JSON_FILE = os.path.join(SCRIPT_DIR, "..", "relation.json")
 OUTPUT_DIR = os.path.join(SCRIPT_DIR, "data")
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 def get_end_meters(node, end_meter_list=None):
-    """Recursively traverses relation.json and extracts ONLY nodes with no sub_nodes (Leaf Nodes)."""
+    """Recursively traverses relation.json and extracts ONLY nodes with no sub_nodes (Leaf Nodes),
+    excluding specific source/storage IDs and nodes without IDs."""
     if end_meter_list is None:
         end_meter_list = []
     
     sub_nodes = node.get("sub_nodes", [])
+    node_id = node.get("id")
+
     if not sub_nodes:
-        if "id" in node:
+        # Check if node has a valid ID and is not in the exclusion list
+        if node_id is not None and node_id not in EXCLUDED_IDS:
             end_meter_list.append({
-                "id": node["id"],
-                "name": node.get("name", f"Node {node['id']}"),
+                "id": node_id,
+                "name": node.get("name", f"Node {node_id}"),
                 "category": node.get("category", "Unknown")
             })
     else:
+        # If it has sub_nodes, it's a Branch. Recurse down.
         for sub in sub_nodes:
             get_end_meters(sub, end_meter_list)
         
@@ -58,8 +66,6 @@ def build_status_badge(data):
     actual = data['actual']
     expected = data['expected']
     interval = data['interval']
-    
-    # Calculate health percentage
     health = (actual / expected) * 100 if expected > 0 else 0
     
     if health >= 95:
@@ -81,7 +87,7 @@ def main(start_date, days):
     end_date_str = dates[-1]
     report_file = os.path.join(OUTPUT_DIR, f"endmetersping-{start_date}.html")
     
-    print(f"🗓️ Generating 7-Day Continuity Matrix ({start_date} to {end_date_str})...")
+    print(f"🗓️ Generating Filtered 7-Day Continuity Matrix ({start_date} to {end_date_str})...")
 
     # 1. Load Topology & Filter for End Meters
     try:
@@ -94,10 +100,9 @@ def main(start_date, days):
         return
 
     if not end_meter_ids:
-        print("❌ No end meters found in relation.json.")
+        print("❌ No valid end meters found (check IDs and exclusions in relation.json).")
         return
 
-    # Initialize data matrix: matrix[node_id][date_str] = data_dict
     data_matrix = {n['id']: {d: None for d in dates} for n in end_nodes}
 
     # 2. Database Bulk Processing
@@ -109,7 +114,6 @@ def main(start_date, days):
             table_name = f"site_power_{date_str}"
             print(f"  > Scanning {table_name}...")
             
-            # Format the query for strict 24h boundaries on targeted nodes
             format_strings = ','.join(['%s'] * len(end_meter_ids))
             query = f"""
                 SELECT meter_number, ts 
@@ -127,40 +131,28 @@ def main(start_date, days):
                 if rows:
                     df = pd.DataFrame(rows)
                     df['ts'] = pd.to_datetime(df['ts'])
-                    
-                    # Group by meter to calculate median intervals and counts
                     grouped = df.groupby('meter_number')
                     for meter_id, group in grouped:
                         actual_count = len(group)
-                        
                         if actual_count > 1:
                             median_interval = group['ts'].diff().dt.total_seconds().median() / 60.0
-                            # Failsafe for rapid duplicate logs
-                            if pd.isna(median_interval) or median_interval < 1:
-                                median_interval = 15.0
+                            if pd.isna(median_interval) or median_interval < 1: median_interval = 15.0
                         else:
-                            median_interval = 15.0 # Default assumption if only 1 log exists
+                            median_interval = 15.0
                             
                         expected_count = int(1440 // median_interval) if median_interval > 0 else 96
-                        
-                        # Store the result
                         data_matrix[meter_id][date_str] = {
-                            'actual': actual_count,
-                            'expected': expected_count,
-                            'interval': median_interval
+                            'actual': actual_count, 'expected': expected_count, 'interval': median_interval
                         }
             except mysql.connector.Error as err:
-                print(f"    [!] Table {table_name} may not exist or error occurred: {err}")
+                print(f"    [!] Table {table_name} missing or error: {err}")
                 
         conn.close()
     except Exception as e:
-        print(f"❌ Database Error: {e}")
-        return
+        print(f"❌ Database Error: {e}"); return
 
     # --- STATISTICS ---
-    total_logs_act = 0
-    total_logs_exp = 0
-    meter_days_with_data = 0
+    total_logs_act, total_logs_exp, meter_days_with_data = 0, 0, 0
     for nid in data_matrix:
         for d in dates:
             cell = data_matrix[nid][d]
@@ -174,58 +166,45 @@ def main(start_date, days):
 
     # --- UI GENERATION ---
     date_headers = "".join([f"<th class='px-3 py-4 border-b border-slate-200 text-center text-xs font-bold text-slate-600 bg-slate-50'>{d}</th>" for d in dates])
-    
     rows_html = ""
     for node in end_nodes:
         nid = node['id']
         cells = ""
         for d in dates:
-            cell_data = data_matrix[nid][d]
-            cells += f"<td class='px-2 py-3 border-b border-slate-100 align-middle'>{build_status_badge(cell_data)}</td>"
-            
+            cells += f"<td class='px-2 py-3 border-b border-slate-100 align-middle'>{build_status_badge(data_matrix[nid][d])}</td>"
         rows_html += f"""
         <tr class="hover:bg-slate-50 transition-colors bg-white">
             <td class="px-4 py-3 border-b border-slate-100 font-mono text-xs text-slate-500 w-16 align-middle">ID:{nid}</td>
             <td class="px-4 py-3 border-b border-slate-100 text-xs text-slate-800 font-medium align-middle whitespace-normal min-w-[200px] leading-tight">{node['name']}</td>
             <td class="px-4 py-3 border-b border-slate-100 text-[10px] uppercase text-slate-400 tracking-widest align-middle">{node['category']}</td>
             {cells}
-        </tr>
-        """
+        </tr>"""
 
     html_content = f"""
     <!DOCTYPE html>
     <html lang="en">
     <head>
-        <meta charset="UTF-8"><title>AIENERGY - 7-Day End Meter Continuity</title>
+        <meta charset="UTF-8"><title>AIENERGY - 7-Day Filtered Continuity</title>
         <script src="https://cdn.tailwindcss.com"></script>
         <style>
             ::-webkit-scrollbar {{ width: 8px; height: 8px; }}
             ::-webkit-scrollbar-track {{ background: #f8fafc; }}
             ::-webkit-scrollbar-thumb {{ background: #cbd5e1; border-radius: 4px; }}
             ::-webkit-scrollbar-thumb:hover {{ background: #94a3b8; }}
-            @media print {{
-                @page {{ size: landscape; margin: 10mm; }}
-                body {{ background: white; -webkit-print-color-adjust: exact; }}
-                .shadow-sm {{ box-shadow: none; border-color: #e2e8f0; }}
-            }}
+            @media print {{ @page {{ size: landscape; margin: 5mm; }} body {{ background: white; -webkit-print-color-adjust: exact; }} .shadow-sm {{ box-shadow: none; border-color: #e2e8f0; }} }}
         </style>
     </head>
     <body class="bg-slate-100 min-h-screen font-sans text-slate-900 pb-12">
         <div class="max-w-[1600px] mx-auto mt-8 px-6 space-y-8">
             <header class="bg-white p-8 rounded-2xl shadow-sm border border-slate-200 flex justify-between items-center">
                 <div>
-                    <h1 class="text-3xl font-black text-slate-900">7-Day End Meter Continuity Matrix</h1>
-                    <p class="text-slate-500 mt-2 text-sm">Tracking data frequency and detection intervals for <strong class="text-slate-700">Leaf Nodes Only</strong> | <span class="font-mono">20{start_date} - 20{end_date_str}</span></p>
+                    <h1 class="text-3xl font-black text-slate-900">End Meter Connectivity Matrix</h1>
+                    <p class="text-slate-500 mt-2 text-sm">Monitoring consumption loads only. <span class="text-rose-500 font-bold">Solar and Storage IDs excluded.</span></p>
                 </div>
                 <div class="flex items-center gap-6">
                     <div class="bg-slate-100 p-3 rounded-lg border border-slate-200 text-right">
-                        <div class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">End Meters Tracked</div>
+                        <div class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Active End-Load Nodes</div>
                         <div class="text-xl font-black text-slate-700">{len(end_nodes)} Nodes</div>
-                    </div>
-                    <div class="flex gap-3 text-[10px] uppercase font-bold tracking-widest">
-                        <span class="px-3 py-2 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded flex items-center gap-2 shadow-sm"><span class="w-2 h-2 rounded-full bg-emerald-500"></span> > 95%</span>
-                        <span class="px-3 py-2 bg-amber-50 text-amber-700 border border-amber-300 rounded flex items-center gap-2 shadow-sm"><span class="w-2 h-2 rounded-full bg-amber-500"></span> 50-94%</span>
-                        <span class="px-3 py-2 bg-rose-50 text-rose-700 border border-rose-200 rounded flex items-center gap-2 shadow-sm"><span class="w-2 h-2 rounded-full bg-rose-500"></span> < 50%</span>
                     </div>
                 </div>
             </header>
@@ -237,22 +216,16 @@ def main(start_date, days):
                     <div class="w-full bg-slate-100 h-1.5 rounded-full mt-3 overflow-hidden"><div class="bg-slate-700 h-full" style="width: {overall_rel}%"></div></div>
                 </div>
                 <div class="bg-slate-900 p-6 rounded-2xl shadow-xl text-white">
-                    <span class="text-[10px] font-bold text-slate-400 uppercase tracking-widest text-opacity-80">Meter-Days With Data</span>
+                    <span class="text-[10px] font-bold text-slate-400 uppercase tracking-widest text-opacity-80">Data Presence</span>
                     <div class="text-3xl font-black mt-1 text-white">{meter_days_with_data}<span class="text-slate-400 font-normal"> / {total_cells}</span> <span class="text-sm font-light text-slate-400">({coverage_pct:.0f}%)</span></div>
                 </div>
             </div>
 
             <section class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden mb-8">
                 <div class="bg-slate-900 p-4 flex justify-between items-center text-white">
-                    <div>
-                        <h2 class="text-lg font-bold tracking-widest">Hardware Telemetry Timeline</h2>
-                        <p class="text-[10px] text-slate-400 uppercase mt-1">Target Period: 20{start_date} to 20{end_date_str}</p>
-                    </div>
-                    <div class="text-right text-[10px] text-slate-300 font-mono">
-                        F = Actual / Expected Logs <br> I = Median Interval (mins)
-                    </div>
+                    <h2 class="text-lg font-bold tracking-widest uppercase text-xs">Consumption Hardware Timeline (20{start_date} - 20{end_date_str})</h2>
+                    <div class="text-right text-[10px] text-slate-300 font-mono">F = Actual/Expected | I = Interval</div>
                 </div>
-                
                 <div class="overflow-x-auto w-full">
                     <table class="w-full text-left border-collapse min-w-max">
                         <thead class="sticky top-0 shadow-sm z-10">
@@ -263,9 +236,7 @@ def main(start_date, days):
                                 {date_headers}
                             </tr>
                         </thead>
-                        <tbody class="divide-y divide-slate-100">
-                            {rows_html}
-                        </tbody>
+                        <tbody class="divide-y divide-slate-100">{rows_html}</tbody>
                     </table>
                 </div>
             </section>
@@ -274,14 +245,12 @@ def main(start_date, days):
     </html>
     """
 
-    with open(report_file, "w", encoding="utf-8") as f:
-        f.write(html_content)
-    print(f"✅ Success! 7-Day Continuity Matrix generated at: {report_file}")
+    with open(report_file, "w", encoding="utf-8") as f: f.write(html_content)
+    print(f"✅ Filtered Connectivity Matrix generated at: {report_file}")
     webbrowser.open(Path(report_file).resolve().as_uri())
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--start", type=str, default="260201", help="Start date (YYMMDD)")
-    parser.add_argument("--days", type=int, default=7, help="Number of consecutive days to check")
-    args = parser.parse_args()
-    main(args.start, args.days)
+    parser.add_argument("--start", type=str, default="260201")
+    parser.add_argument("--days", type=int, default=7)
+    args = parser.parse_args(); main(args.start, args.days)
