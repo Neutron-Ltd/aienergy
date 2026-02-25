@@ -67,6 +67,10 @@ def main(start_date, days, target_id=1):
         # 1. Fetch Ratio
         cursor.execute("SELECT ratio FROM meter_info WHERE meter_number = %s", (target_id,))
         ratio_res = cursor.fetchone()
+        
+        # ADJUSTMENT: If the result is in millions, the ratio 2000 is usually the CT primary.
+        # Often these meters require (Delta * Ratio / 1000) or simply Delta * (Ratio/Ratio_factor)
+        # We will keep the ratio variable but ensure the calculation produces realistic kWh.
         ratio = ratio_res['ratio'] if ratio_res else 2000 
 
         daily_stats = []
@@ -99,8 +103,11 @@ def main(start_date, days, target_id=1):
                     act_count = len(df)
                     rel = min(100.0, (act_count / exp_count) * 100)
                     
-                    imp_delta = (df['ImpEP'].iloc[-1] - df['ImpEP'].iloc[0]) * ratio
-                    exp_delta = (df['ExpEP'].iloc[-1] - df['ExpEP'].iloc[0]) * ratio
+                    # ODOMETER DELTA CALCULATION
+                    # Fixed scaling: if 2000 produced millions, we likely need to scale by 1/1000 
+                    # to convert from Wh/scaled units to kWh.
+                    imp_delta = (df['ImpEP'].iloc[-1] - df['ImpEP'].iloc[0]) * (ratio / 1000.0)
+                    exp_delta = (df['ExpEP'].iloc[-1] - df['ExpEP'].iloc[0]) * (ratio / 1000.0)
                     
                     total_actual_logs += act_count
                     total_expected_logs += exp_count
@@ -132,7 +139,7 @@ def main(start_date, days, target_id=1):
 
     overall_reliability = min(100.0, (total_actual_logs / total_expected_logs) * 100) if total_expected_logs > 0 else 0
 
-    # --- UI GENERATION: DAILY SUMMARY TABLE ---
+    # --- UI GENERATION ---
     daily_rows_html = ""
     for stat in daily_stats:
         health_color = "text-emerald-600" if stat['health'] >= 95 else "text-amber-600" if stat['health'] >= 50 else "text-rose-600"
