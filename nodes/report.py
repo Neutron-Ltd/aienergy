@@ -320,16 +320,16 @@ def main(start_date, days, target_grid_id=1, open_browser=True):
         </tr>
         """
 
-    grid_gaps_str = ", ".join(grid["gap_days"]) if grid["gap_days"] else "None"
-    solar_gaps_str = ", ".join(solar["gap_days"]) if solar["gap_days"] else "None"
-    cons_gaps_str = ", ".join(consumption["gap_days"]) if consumption["gap_days"] else "None"
+    grid_gaps_str = ", ".join(grid["gap_days"]) if grid["gap_days"] else "None / 无"
+    solar_gaps_str = ", ".join(solar["gap_days"]) if solar["gap_days"] else "None / 无"
+    cons_gaps_str = ", ".join(consumption["gap_days"]) if consumption["gap_days"] else "None / 无"
 
     html_content = f"""
     <!DOCTYPE html>
     <html lang="en">
     <head>
         <meta charset="UTF-8">
-        <title>Energy Balance Report | AIENERGY</title>
+        <title>Energy Balance Report / 能源平衡报告 | AIENERGY</title>
         <script src="https://cdn.tailwindcss.com"></script>
         <style>
             ::-webkit-scrollbar {{ width: 8px; height: 8px; }}
@@ -341,54 +341,54 @@ def main(start_date, days, target_grid_id=1, open_browser=True):
     <body class="bg-slate-100 min-h-screen font-sans text-slate-900 pb-12">
         <div class="max-w-[1800px] mx-auto mt-8 px-6 space-y-8">
             <header class="bg-white p-8 rounded-2xl shadow-sm border border-slate-200">
-                <h1 class="text-3xl font-black text-slate-900">Energy Balance Report</h1>
+                <h1 class="text-3xl font-black text-slate-900">Energy Balance Report / 能源平衡报告</h1>
                 <p class="text-slate-500 font-medium italic mt-1">
-                    Formula: (Grid Import + Solar) − Consumption | {days}-Day Summary | 20{start_date} → 20{end_date_str}
+                    Formula: (Grid Import + Solar) − Consumption / 公式:(电网输入+太阳能)−用电量 | {days}-Day Summary / {days}天汇总 | 20{start_date} → 20{end_date_str}
                 </p>
                 <p class="text-slate-400 text-xs mt-2 font-mono">
-                    Grid: {display_title} (ID:{target_grid_id}) • Solar: {len(solar_nodes)} nodes • Consumption: {len(end_meters)} end meters
+                    Grid / 电网: {display_title} (ID:{target_grid_id}) • Solar / 太阳能: {len(solar_nodes)} nodes / 节点 • Consumption / 用电: {len(end_meters)} end meters / 末端电表
                 </p>
             </header>
 
             <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
                 <div class="bg-emerald-900 p-6 rounded-2xl shadow-xl text-white">
-                    <span class="text-[10px] font-bold text-emerald-300 uppercase tracking-widest">Grid Import</span>
+                    <span class="text-[10px] font-bold text-emerald-300 uppercase tracking-widest">Grid Import / 电网输入</span>
                     <div class="text-2xl font-black mt-1">{grid['total_import_kwh']:,.1f} <span class="text-sm font-light">kWh</span></div>
                 </div>
                 <div class="bg-amber-600 p-6 rounded-2xl shadow-xl text-white">
-                    <span class="text-[10px] font-bold text-amber-200 uppercase tracking-widest">Solar</span>
+                    <span class="text-[10px] font-bold text-amber-200 uppercase tracking-widest">Solar / 太阳能</span>
                     <div class="text-2xl font-black mt-1">{solar['total_kwh']:,.1f} <span class="text-sm font-light">kWh</span></div>
                 </div>
                 <div class="bg-indigo-900 p-6 rounded-2xl shadow-xl text-white">
-                    <span class="text-[10px] font-bold text-indigo-300 uppercase tracking-widest">Consumption</span>
+                    <span class="text-[10px] font-bold text-indigo-300 uppercase tracking-widest">Consumption / 用电量</span>
                     <div class="text-2xl font-black mt-1">{consumption_total:,.1f} <span class="text-sm font-light">kWh</span></div>
                 </div>
                 <div class="bg-slate-800 p-6 rounded-2xl shadow-xl text-white">
-                    <span class="text-[10px] font-bold text-slate-300 uppercase tracking-widest">Energy Difference</span>
+                    <span class="text-[10px] font-bold text-slate-300 uppercase tracking-widest">Energy Difference / 能源差值</span>
                     <div class="text-2xl font-black mt-1 {'text-emerald-300' if energy_diff >= 0 else 'text-rose-300'}">{energy_diff:+,.1f} <span class="text-sm font-light">kWh</span></div>
-                    <div class="text-xs text-slate-400 mt-1">({pct_diff:+.1f}% of consumption)</div>
+                    <div class="text-xs text-slate-400 mt-1">({pct_diff:+.1f}% of consumption / 占用电量)</div>
                 </div>
                 <div class="bg-blue-900 p-6 rounded-2xl shadow-xl text-white">
-                    <span class="text-[10px] font-bold text-blue-300 uppercase tracking-widest">Grid Export</span>
+                    <span class="text-[10px] font-bold text-blue-300 uppercase tracking-widest">Grid Export / 电网输出</span>
                     <div class="text-2xl font-black mt-1">{grid['total_export_kwh']:,.1f} <span class="text-sm font-light">kWh</span></div>
                 </div>
             </div>
 
             <section class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
                 <div class="bg-slate-800 p-4 border-b border-slate-700 text-white">
-                    <h3 class="font-bold text-xs uppercase tracking-widest">Data Quality & Frequency</h3>
+                    <h3 class="font-bold text-xs uppercase tracking-widest">Data Quality & Frequency / 数据质量与频率</h3>
                 </div>
                 <div class="p-4 overflow-x-auto">
                     <table class="w-full text-sm">
                         <thead class="text-slate-500 border-b">
                             <tr>
-                                <th class="p-2 text-left font-bold">Source</th>
-                                <th class="p-2 text-right font-bold">DB Table</th>
-                                <th class="p-2 text-right font-bold">Data Freq (median)</th>
-                                <th class="p-2 text-right font-bold">Expected Logs</th>
-                                <th class="p-2 text-right font-bold">Actual Logs</th>
-                                <th class="p-2 text-right font-bold">Reliability</th>
-                                <th class="p-2 text-left font-bold">Gap Days (&lt;95%)</th>
+                                <th class="p-2 text-left font-bold">Source / 来源</th>
+                                <th class="p-2 text-right font-bold">DB Table / 数据表</th>
+                                <th class="p-2 text-right font-bold">Data Freq (median) / 数据频率(中位)</th>
+                                <th class="p-2 text-right font-bold">Expected Logs / 预期日志</th>
+                                <th class="p-2 text-right font-bold">Actual Logs / 实际日志</th>
+                                <th class="p-2 text-right font-bold">Reliability / 可靠性</th>
+                                <th class="p-2 text-left font-bold">Gap Days (&lt;95%) / 缺口日(&lt;95%)</th>
                             </tr>
                         </thead>
                         <tbody class="divide-y divide-slate-100">
@@ -426,21 +426,21 @@ def main(start_date, days, target_grid_id=1, open_browser=True):
 
             <section class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
                 <div class="bg-slate-800 p-4 border-b border-slate-700 text-white flex justify-between items-center">
-                    <h3 class="font-bold text-xs uppercase tracking-widest">Daily Energy Balance</h3>
-                    <span class="text-[10px] text-slate-400 font-mono">Supply = Grid Import + Solar | Diff = Supply − Consumption</span>
+                    <h3 class="font-bold text-xs uppercase tracking-widest">Daily Energy Balance / 日能源平衡</h3>
+                    <span class="text-[10px] text-slate-400 font-mono">Supply = Grid Import + Solar / 供应=电网输入+太阳能 | Diff = Supply − Consumption / 差值=供应−用电</span>
                 </div>
                 <div class="overflow-x-auto">
                     <table class="w-full text-sm">
                         <thead class="bg-slate-50 text-slate-500 border-b">
                             <tr>
-                                <th class="p-3 font-bold text-left">Date</th>
-                                <th class="p-3 font-bold text-right text-emerald-700">Grid Import</th>
-                                <th class="p-3 font-bold text-right text-amber-600">Solar</th>
-                                <th class="p-3 font-bold text-right">Supply</th>
-                                <th class="p-3 font-bold text-right text-indigo-700">Consumption</th>
-                                <th class="p-3 font-bold text-right">Diff (kWh)</th>
-                                <th class="p-3 font-bold text-center">Grid Intv</th>
-                                <th class="p-3 font-bold text-center">Grid Health</th>
+                                <th class="p-3 font-bold text-left">Date / 日期</th>
+                                <th class="p-3 font-bold text-right text-emerald-700">Grid Import / 电网输入</th>
+                                <th class="p-3 font-bold text-right text-amber-600">Solar / 太阳能</th>
+                                <th class="p-3 font-bold text-right">Supply / 供应</th>
+                                <th class="p-3 font-bold text-right text-indigo-700">Consumption / 用电</th>
+                                <th class="p-3 font-bold text-right">Diff (kWh) / 差值</th>
+                                <th class="p-3 font-bold text-center">Grid Intv / 电网间隔</th>
+                                <th class="p-3 font-bold text-center">Grid Health / 电网健康</th>
                             </tr>
                         </thead>
                         <tbody>{daily_html}</tbody>
@@ -449,17 +449,17 @@ def main(start_date, days, target_grid_id=1, open_browser=True):
             </section>
 
             <section class="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
-                <h3 class="font-bold text-xs uppercase tracking-widest text-slate-500 mb-3">Calculation Notes</h3>
+                <h3 class="font-bold text-xs uppercase tracking-widest text-slate-500 mb-3">Calculation Notes / 计算说明</h3>
                 <ul class="text-xs text-slate-600 space-y-1 font-mono">
-                    <li>• Grid: Odometer delta (ImpEP/ExpEP last − first) × (ratio/1000) from site_energy_*</li>
-                    <li>• Solar: Σ(Pt) × ratio × (interval_min/60) from site_power_* for PV nodes</li>
-                    <li>• Consumption: Σ(Pt) × ratio × (interval_min/60) from site_power_* for end meters (excl. 56,29,31,30)</li>
-                    <li>• Energy Diff &gt; 0: surplus (export, storage, losses); &lt; 0: shortfall or measurement gaps</li>
+                    <li>• Grid / 电网: Odometer delta (ImpEP/ExpEP last − first) × (ratio/1000) from site_energy_*</li>
+                    <li>• Solar / 太阳能: Σ(Pt) × ratio × (interval_min/60) from site_power_* for PV nodes / 光伏节点</li>
+                    <li>• Consumption / 用电: Σ(Pt) × ratio × (interval_min/60) from site_power_* for end meters (excl. 56,29,31,30) / 末端电表(不含56,29,31,30)</li>
+                    <li>• Energy Diff &gt; 0: surplus (export, storage, losses) / 盈余; &lt; 0: shortfall or measurement gaps / 亏空或测量缺口</li>
                 </ul>
             </section>
 
             <footer class="text-center text-slate-400 text-[10px] py-8 border-t border-slate-100">
-                Generated by AIENERGY System • Energy Balance Report
+                Generated by AIENERGY System / AI能源系统生成 • Energy Balance Report / 能源平衡报告
             </footer>
         </div>
     </body>

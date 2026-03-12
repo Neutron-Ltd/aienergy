@@ -95,7 +95,7 @@ def api_analyze():
     """Run the analysis script for the given type, start date, and days."""
     data = request.get_json() or {}
     report_type = data.get("type", "grid")
-    start = data.get("start", "260201")
+    start = data.get("start", "260301")
     days = data.get("days", 7)
 
     if report_type not in REPORT_TYPES:

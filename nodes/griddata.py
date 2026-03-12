@@ -157,7 +157,7 @@ def main(start_date, days, target_id=1, open_browser=True):
     <!DOCTYPE html>
     <html lang="en">
     <head>
-        <meta charset="UTF-8"><title>{display_title} - {days} Day Grid Summary</title>
+        <meta charset="UTF-8"><title>{display_title} - {days} Day Grid Summary / {days}天电网汇总</title>
         <script src="https://cdn.tailwindcss.com"></script>
         <style>
             ::-webkit-scrollbar {{ width: 8px; height: 8px; }}
@@ -177,17 +177,17 @@ def main(start_date, days, target_id=1, open_browser=True):
             <header class="bg-white p-8 rounded-2xl shadow-sm border border-slate-200 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                 <div>
                     <h1 class="text-3xl font-black text-slate-900">{display_title}</h1>
-                    <p class="text-slate-500 font-medium italic mt-1">{days}-Day Power Grid Executive Summary | <span class="font-mono text-slate-700">20{start_date} - 20{end_date_str}</span></p>
+                    <p class="text-slate-500 font-medium italic mt-1">{days}-Day Power Grid Executive Summary / {days}天电网执行汇总 | <span class="font-mono text-slate-700">20{start_date} - 20{end_date_str}</span></p>
                 </div>
                 <div class="text-left md:text-right bg-slate-100 p-3 rounded-lg border border-slate-200">
-                    <div class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Ratio: {ratio}</div>
+                    <div class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Ratio / 变比: {ratio}</div>
                     <div class="text-lg font-mono font-bold text-blue-600">ID: {target_id}</div>
                 </div>
             </header>
 
             <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
-                    <span class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Aggregate Reliability</span>
+                    <span class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Aggregate Reliability / 综合可靠性</span>
                     <div class="text-3xl font-black text-slate-800 mt-1">{overall_reliability:.1f}%</div>
                     <div class="w-full bg-slate-100 h-1.5 rounded-full mt-3 overflow-hidden">
                         <div class="bg-indigo-500 h-full transition-all" style="width: {overall_reliability}%"></div>
@@ -195,30 +195,30 @@ def main(start_date, days, target_id=1, open_browser=True):
                 </div>
                 
                 <div class="bg-emerald-900 p-6 rounded-2xl shadow-xl text-white">
-                    <span class="text-[10px] font-bold text-emerald-300 uppercase tracking-widest text-opacity-80">Total Grid Import</span>
+                    <span class="text-[10px] font-bold text-emerald-300 uppercase tracking-widest text-opacity-80">Total Grid Import / 电网总输入</span>
                     <div class="text-3xl font-black mt-1 text-emerald-50">{total_import_kwh:,.1f} <span class="text-sm font-light">kWh</span></div>
                 </div>
 
                 <div class="bg-blue-900 p-6 rounded-2xl shadow-xl text-white">
-                    <span class="text-[10px] font-bold text-blue-300 uppercase tracking-widest text-opacity-80">Total Grid Export</span>
+                    <span class="text-[10px] font-bold text-blue-300 uppercase tracking-widest text-opacity-80">Total Grid Export / 电网总输出</span>
                     <div class="text-3xl font-black mt-1 text-blue-50">{total_export_kwh:,.1f} <span class="text-sm font-light">kWh</span></div>
                 </div>
             </div>
 
             <section class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
                 <div class="bg-slate-800 p-4 border-b border-slate-700 flex justify-between items-center text-white">
-                    <h3 class="font-bold text-xs uppercase tracking-widest">Daily Consumption Summary</h3>
-                    <span class="text-[10px] font-mono text-slate-400">Aggregated Deltas from site_energy</span>
+                    <h3 class="font-bold text-xs uppercase tracking-widest">Daily Consumption Summary / 日消耗汇总</h3>
+                    <span class="text-[10px] font-mono text-slate-400">Aggregated Deltas from site_energy / 来自 site_energy 的累计差值</span>
                 </div>
                 <div class="w-full">
                     <table class="w-full text-sm text-left">
                         <thead class="bg-slate-50 text-slate-500 border-b border-slate-200">
                             <tr>
-                                <th class="p-4 font-bold">Date</th>
-                                <th class="p-4 font-bold">Logs (Act/Exp)</th>
-                                <th class="p-4 font-bold">Health</th>
-                                <th class="p-4 font-bold text-right text-emerald-700">Import</th>
-                                <th class="p-4 font-bold text-right text-blue-700">Export</th>
+                                <th class="p-4 font-bold">Date / 日期</th>
+                                <th class="p-4 font-bold">Logs (Act/Exp) / 日志(实/预)</th>
+                                <th class="p-4 font-bold">Health / 健康度</th>
+                                <th class="p-4 font-bold text-right text-emerald-700">Import / 输入</th>
+                                <th class="p-4 font-bold text-right text-blue-700">Export / 输出</th>
                             </tr>
                         </thead>
                         <tbody class="divide-y divide-slate-100">
@@ -229,7 +229,7 @@ def main(start_date, days, target_id=1, open_browser=True):
             </section>
             
             <footer class="text-center text-slate-400 text-[10px] py-8 border-t border-slate-100">
-                Generated by AIENERGY System • Unified Grid Audit Report
+                Generated by AIENERGY System / AI能源系统生成 • Unified Grid Audit Report / 统一电网审计报告
             </footer>
         </div>
     </body>
