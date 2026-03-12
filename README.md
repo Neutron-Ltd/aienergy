@@ -9,6 +9,9 @@ Tools for processing and reporting smart meter and energy register data from the
 
 ```
 aienergy/
+├── dashboard.py        # AI Energy Dashboard (Flask backend)
+├── run_dashboard.py    # Launch script for the dashboard
+├── templates/          # Dashboard HTML templates
 ├── db/                 # Database utilities and schema exports
 │   ├── connect.py      # Connection test
 │   ├── info.py         # DB info helpers
@@ -59,6 +62,18 @@ Check the top of each node script for configuration constants (date targets, met
 
 ---
 
+## AI Energy Dashboard
+
+Launch the unified dashboard (bilingual EN/中文) to browse Grid, Solar, Meters, and Report data:
+
+```bash
+python run_dashboard.py
+```
+
+This starts a local server at http://localhost:5050 and opens the dashboard in your browser. Use the left sidebar to switch report types, select from history, or analyze a new date range. Reports are cached in `nodes/data/` and load instantly when selected from history.
+
+---
+
 ## db utilities
 
 - `db/connect.py` — quick connection test to the MySQL `unified` database.
@@ -83,6 +98,7 @@ Most generated files follow the YYMMDD/date-based naming convention; examples yo
 ## Requirements
 
 - Python 3.8+
+- `flask` (for dashboard)
 - `mysql-connector-python`
 - `pandas`
 - `matplotlib` (optional for charts)
@@ -93,7 +109,7 @@ Install with pip:
 pip install -r requirements.txt
 ```
 
-If `requirements.txt` is not present, install packages individually.
+Or activate the project venv first: `source .venv/bin/activate`
 
 ---
 

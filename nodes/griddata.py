@@ -52,7 +52,7 @@ def generate_date_range(start_date_str, days=7):
     start_dt = datetime.strptime(f"20{start_date_str}", "%Y%m%d")
     return [(start_dt + timedelta(days=i)).strftime("%y%m%d") for i in range(days)]
 
-def main(start_date, days, target_id=1):
+def main(start_date, days, target_id=1, open_browser=True):
     dates = generate_date_range(start_date, days)
     end_date_str = dates[-1]
     report_file = os.path.join(OUTPUT_DIR, f"griddata-{start_date}-{days}d.html")
@@ -239,11 +239,14 @@ def main(start_date, days, target_id=1):
     with open(report_file, "w", encoding="utf-8") as f:
         f.write(html_content)
     print(f"✅ Success: Executive Summary generated at {report_file}")
-    webbrowser.open(Path(report_file).resolve().as_uri())
+    if open_browser:
+        webbrowser.open(Path(report_file).resolve().as_uri())
+    return report_file
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--start", type=str, default="260201", help="Start date (YYMMDD)")
     parser.add_argument("--days", type=int, default=7, help="Number of days to track")
+    parser.add_argument("--no-browser", action="store_true", help="Do not open browser after generating")
     args = parser.parse_args()
-    main(args.start, args.days)
+    main(args.start, args.days, open_browser=not args.no_browser)

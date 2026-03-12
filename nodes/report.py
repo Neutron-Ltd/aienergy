@@ -247,7 +247,7 @@ def fetch_power_based_data(cursor, dates, node_list, table_prefix="site_power"):
     }
 
 
-def main(start_date, days, target_grid_id=1):
+def main(start_date, days, target_grid_id=1, open_browser=True):
     dates = generate_date_range(start_date, days)
     end_date_str = dates[-1]
     report_file = os.path.join(OUTPUT_DIR, f"report-{start_date}-{days}d.html")
@@ -470,7 +470,9 @@ def main(start_date, days, target_grid_id=1):
         f.write(html_content)
 
     print(f"✅ Energy Balance Report: {report_file}")
-    webbrowser.open(Path(report_file).resolve().as_uri())
+    if open_browser:
+        webbrowser.open(Path(report_file).resolve().as_uri())
+    return report_file
 
 
 if __name__ == "__main__":
@@ -478,5 +480,6 @@ if __name__ == "__main__":
     parser.add_argument("--start", type=str, default="260201", help="Start date (YYMMDD)")
     parser.add_argument("--days", type=int, default=7, help="Number of days")
     parser.add_argument("--grid-id", type=int, default=1, help="Grid meter node ID")
+    parser.add_argument("--no-browser", action="store_true", help="Do not open browser after generating")
     args = parser.parse_args()
-    main(args.start, args.days, args.grid_id)
+    main(args.start, args.days, args.grid_id, open_browser=not args.no_browser)
