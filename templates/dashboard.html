@@ -146,7 +146,12 @@
                     <span class="en">Analyze</span> <span class="zh opacity-90">分析</span>
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
                 </button>
-                <span id="status-msg" class="text-sm text-slate-500 ml-1"></span>
+                <span id="status-msg" class="text-sm text-slate-500 ml-1 flex-1 min-w-[8rem]"></span>
+                <form method="post" action="/logout" class="ml-auto shrink-0">
+                    <button type="submit" class="text-xs font-semibold text-slate-500 hover:text-indigo-600 px-3 py-2 rounded-lg border border-slate-200 hover:border-indigo-200 bg-white transition-colors">
+                        Log out / 退出
+                    </button>
+                </form>
             </header>
 
             <div class="flex-1 overflow-hidden p-4">
@@ -260,9 +265,18 @@
             reportFrame.src = '/reports/' + path;
         }
 
+        function redirectIfUnauthorized(res) {
+            if (res.status === 401) {
+                window.location.href = '/login';
+                return true;
+            }
+            return false;
+        }
+
         async function fetchHistory() {
             try {
                 const res = await fetch('/api/history?type=' + encodeURIComponent(currentType));
+                if (redirectIfUnauthorized(res)) return;
                 const data = await res.json();
                 const hist = data.history || [];
                 historySelect.innerHTML = '<option value="">-- Select / 选择 --</option>' +
@@ -288,6 +302,7 @@
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ type: currentType, start, days }),
                 });
+                if (redirectIfUnauthorized(res)) return;
                 const data = await res.json();
                 if (data.success) {
                     setStatus('Done / 完成');

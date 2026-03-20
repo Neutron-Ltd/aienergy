@@ -62,7 +62,9 @@ Launch the unified dashboard (bilingual EN/中文) to browse Grid, Solar, Meters
 python dashboard.py
 ```
 
-This starts a local server at http://localhost:5050 and opens the dashboard in your browser. Use the sidebar for Grid, Solar, and Report; **Meters** expands (chevron) to show **Meters** / **Data** / **Use** (`endmeters`, `endmetersdata`, `endmetersuse`). Single-day **Meters** uses **Start** only (Days dimmed). Reports live under `nodes/data/` and load from **History** without re-running analysis.
+This starts a local server at http://localhost:5050 and opens the dashboard in your browser. You are prompted to **sign in** first (default user `aienergy`; override with `AIENERGY_USER` / `AIENERGY_PASSWORD`). Set **`FLASK_SECRET_KEY`** in production so sessions stay valid and are not guessable.
+
+Use the sidebar for Grid, Solar, and Report; **Meters** expands (chevron) to show **Meters** / **Data** / **Use** (`endmeters`, `endmetersdata`, `endmetersuse`). Single-day **Meters** uses **Start** only (Days dimmed). Reports live under `nodes/data/` and load from **History** without re-running analysis.
 
 ---
 

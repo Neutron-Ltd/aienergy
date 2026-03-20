@@ -2,8 +2,11 @@
 AI Energy Dashboard - Flask app and entry point
 Run: python dashboard.py
 Serves the dashboard UI and API for running analyses and viewing report history.
+
+Auth: set AIENERGY_USER / AIENERGY_PASSWORD (optional) and FLASK_SECRET_KEY for production.
 """
 
+import hmac
 import os
 import re
 import subprocess
@@ -11,14 +14,29 @@ import sys
 import threading
 import time
 import webbrowser
+from datetime import timedelta
 from pathlib import Path
 
-from flask import Flask, jsonify, render_template, request, send_from_directory
+from flask import (
+    Flask,
+    flash,
+    jsonify,
+    redirect,
+    render_template,
+    request,
+    send_from_directory,
+    session,
+    url_for,
+)
 
 # Project paths
 PROJECT_ROOT = Path(__file__).resolve().parent
 NODES_DIR = PROJECT_ROOT / "nodes"
 DATA_DIR = NODES_DIR / "data"
+
+# Login (override with environment variables in production)
+DASHBOARD_USER = os.environ.get("AIENERGY_USER", "aienergy")
+DASHBOARD_PASSWORD = os.environ.get("AIENERGY_PASSWORD", "REDACTED")
 
 # Report type config
 # value_groups: 2 = regex captures (start, days), 1 = only start (days fixed at 1 for UI)
@@ -68,6 +86,67 @@ REPORT_TYPES = {
 }
 
 app = Flask(__name__, template_folder=str(PROJECT_ROOT / "templates"))
+app.secret_key = os.environ.get(
+    "FLASK_SECRET_KEY",
+    "dev-aienergy-secret-change-with-FLASK_SECRET_KEY-in-production",
+)
+app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(days=7)
+
+
+def _credentials_ok(username: str, password: str) -> bool:
+    """Constant-time compare for password when lengths match."""
+    try:
+        u = username.encode("utf-8")
+        p = password.encode("utf-8")
+        eu = DASHBOARD_USER.encode("utf-8")
+        ep = DASHBOARD_PASSWORD.encode("utf-8")
+    except Exception:
+        return False
+    if len(u) != len(eu) or len(p) != len(ep):
+        return False
+    return hmac.compare_digest(u, eu) and hmac.compare_digest(p, ep)
+
+
+def _safe_next_url(target: str) -> str:
+    if not target:
+        return "/"
+    if not target.startswith("/") or target.startswith("//"):
+        return "/"
+    return target
+
+
+@app.before_request
+def require_login():
+    if request.endpoint in ("login", "static"):
+        return None
+    if session.get("logged_in"):
+        return None
+    if request.path.startswith("/api/"):
+        return jsonify({"error": "Unauthorized", "login": url_for("login")}), 401
+    return redirect(url_for("login", next=request.path))
+
+
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    if session.get("logged_in"):
+        return redirect(_safe_next_url(request.args.get("next") or "/"))
+    if request.method == "POST":
+        user = (request.form.get("username") or "").strip()
+        pw = request.form.get("password") or ""
+        nxt = _safe_next_url(request.form.get("next") or "")
+        if _credentials_ok(user, pw):
+            session["logged_in"] = True
+            session.permanent = True
+            return redirect(nxt or "/")
+        flash("Invalid username or password / 用户名或密码错误", "error")
+        return render_template("login.html", next=nxt or request.args.get("next", ""))
+    return render_template("login.html", next=request.args.get("next", ""))
+
+
+@app.route("/logout", methods=["POST"])
+def logout():
+    session.clear()
+    return redirect(url_for("login"))
 
 
 def get_history(report_type: str):
