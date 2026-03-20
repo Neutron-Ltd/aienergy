@@ -1,0 +1,17 @@
+services:
+  web:
+    build: .
+    ports:
+      - "${HOST_PORT:-5050}:5050"
+    environment:
+      PORT: "5050"
+      FLASK_SECRET_KEY: ${FLASK_SECRET_KEY:-dev-change-in-production}
+      AIENERGY_USER: ${AIENERGY_USER:-aienergy}
+      AIENERGY_PASSWORD: ${AIENERGY_PASSWORD:-REDACTED}
+      MYSQL_HOST: ${MYSQL_HOST:-localhost}
+      MYSQL_PORT: ${MYSQL_PORT:-3307}
+      MYSQL_USER: ${MYSQL_USER:-energy_user}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-REDACTED}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-unified}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"

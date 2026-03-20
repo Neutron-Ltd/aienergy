@@ -1,14 +1,23 @@
 import os
+import sys
+from datetime import datetime
+from pathlib import Path
+
 import mysql.connector
 import pandas as pd
-from datetime import datetime
+
+_root = Path(__file__).resolve().parents[1]
+if str(_root) not in sys.path:
+    sys.path.insert(0, str(_root))
+from db.mysql_env import mysql_connect_kwargs
 
 # --- CONFIGURATION ---
-DB_HOST = "localhost"
-DB_PORT = 3307
-DB_USER = "energy_user"
-DB_PASS = "REDACTED"
-DB_NAME = "unified"
+_c = mysql_connect_kwargs()
+DB_HOST = _c["host"]
+DB_PORT = _c["port"]
+DB_USER = _c["user"]
+DB_PASS = _c["password"]
+DB_NAME = _c["database"]
 
 OUTPUT_DIR = os.path.join(os.path.dirname(__file__), "data")
 OUTPUT_FILE = os.path.join(OUTPUT_DIR, "info.html")

@@ -256,10 +256,18 @@ def api_analyze():
 
     cmd = _build_analyze_command(report_type, start, effective_days)
 
+    sub_env = os.environ.copy()
+    pr = str(PROJECT_ROOT)
+    sub_env["PYTHONPATH"] = (
+        pr + os.pathsep + sub_env["PYTHONPATH"]
+        if sub_env.get("PYTHONPATH")
+        else pr
+    )
     try:
         result = subprocess.run(
             cmd,
             cwd=str(PROJECT_ROOT),
+            env=sub_env,
             capture_output=True,
             text=True,
             timeout=300,
@@ -299,16 +307,18 @@ def serve_report(filename):
 def _open_browser_delayed():
     """Open browser after a short delay so the server is listening."""
     time.sleep(1.2)
-    webbrowser.open("http://localhost:5050")
+    p = int(os.environ.get("PORT", "5050"))
+    webbrowser.open(f"http://localhost:{p}")
 
 
 if __name__ == "__main__":
     os.chdir(PROJECT_ROOT)
     sys.path.insert(0, str(PROJECT_ROOT))
 
-    port = 5050
+    port = int(os.environ.get("PORT", "5050"))
     url = f"http://localhost:{port}"
-    threading.Thread(target=_open_browser_delayed, daemon=True).start()
+    if not os.environ.get("FLASK_SKIP_BROWSER"):
+        threading.Thread(target=_open_browser_delayed, daemon=True).start()
 
     print("=" * 50)
     print("  AI Energy Dashboard / 智能能源")

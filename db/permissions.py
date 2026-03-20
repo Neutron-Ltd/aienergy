@@ -1,13 +1,14 @@
+import sys
+from pathlib import Path
+
 import mysql.connector
 
-# Use your existing config
-config = {
-    'user': 'energy_user',
-    'password': 'REDACTED',
-    'host': 'localhost',
-    'port': 3307,
-    'database': 'unified'
-}
+_root = Path(__file__).resolve().parents[1]
+if str(_root) not in sys.path:
+    sys.path.insert(0, str(_root))
+from db.mysql_env import mysql_connect_kwargs
+
+config = mysql_connect_kwargs()
 
 try:
     conn = mysql.connector.connect(**config)

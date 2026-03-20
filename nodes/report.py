@@ -10,6 +10,7 @@ Data sources (matching griddata.py, solardata.py, endmetersuse.py):
 """
 
 import os
+import sys
 import argparse
 import webbrowser
 from pathlib import Path
@@ -19,14 +20,12 @@ import json
 from datetime import datetime, timedelta
 from collections import defaultdict
 
-# --- CONFIGURATION ---
-DB_CONFIG = {
-    "host": "localhost",
-    "port": 3307,
-    "user": "energy_user",
-    "password": "REDACTED",
-    "database": "unified"
-}
+_ROOT = Path(__file__).resolve().parents[1]
+if str(_ROOT) not in sys.path:
+    sys.path.insert(0, str(_ROOT))
+from db.mysql_env import mysql_connect_kwargs
+
+DB_CONFIG = mysql_connect_kwargs()
 
 EXCLUDED_IDS = [56, 29, 31, 30]  # Solar + Storage (same as endmetersuse.py)
 

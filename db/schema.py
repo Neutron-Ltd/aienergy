@@ -1,14 +1,15 @@
-import mysql.connector
 import os
+import sys
+from pathlib import Path
 
-# 1. Configuration
-config = {
-    'user': 'energy_user',
-    'password': 'REDACTED',
-    'host': 'localhost',
-    'port': 3307,
-    'database': 'unified'
-}
+import mysql.connector
+
+_root = Path(__file__).resolve().parents[1]
+if str(_root) not in sys.path:
+    sys.path.insert(0, str(_root))
+from db.mysql_env import mysql_connect_kwargs
+
+config = mysql_connect_kwargs()
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 OUTPUT_FILE = os.path.join(SCRIPT_DIR, "data", "schema.sql")

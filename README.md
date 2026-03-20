@@ -66,6 +66,18 @@ This starts a local server at http://localhost:5050 and opens the dashboard in y
 
 Use the sidebar for Grid, Solar, and Report; **Meters** expands (chevron) to show **Meters** / **Data** / **Use** (`endmeters`, `endmetersdata`, `endmetersuse`). Single-day **Meters** uses **Start** only (Days dimmed). Reports live under `nodes/data/` and load from **History** without re-running analysis.
 
+### Docker
+
+Run the dashboard in a container (no local Python venv needed):
+
+```bash
+docker compose up --build
+```
+
+Open [http://localhost:5050](http://localhost:5050). The app image sets `PYTHONPATH` and `FLASK_SKIP_BROWSER=1` so the server listens on `0.0.0.0:5050` without opening a browser inside the container.
+
+Database connectivity uses the same defaults as before, overridable with environment variables: **`MYSQL_HOST`**, **`MYSQL_PORT`**, **`MYSQL_USER`**, **`MYSQL_PASSWORD`**, **`MYSQL_DATABASE`**. To reach MySQL running on your Mac/Windows host from Linux containers, set `MYSQL_HOST=host.docker.internal` (Compose already maps that host). Copy `.env.example` to `.env` and adjust secrets (`FLASK_SECRET_KEY`, `AIENERGY_PASSWORD`, `MYSQL_*`).
+
 ---
 
 ## db utilities
