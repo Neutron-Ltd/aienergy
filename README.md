@@ -18,20 +18,15 @@ aienergy/
 │   ├── schema.py       # Schema export
 │   └── data/           # Any DB-related outputs
 ├── nodes/              # Processing nodes (scripts that produce reports)
-│   ├── column.py
 │   ├── endmeters.py
 │   ├── endmetersdata.py
-│   ├── endmetersping.py
-│   ├── grid.py
+│   ├── endmetersuse.py
 │   ├── griddata.py
-│   ├── meterinfo.py
-│   ├── meterping.py
 │   ├── report.py
-│   ├── solar.py
 │   ├── solardata.py
 │   └── data/           # Generated HTML/CSV outputs from node scripts
 ├── report/             # Saved report bundles (e.g. FEB-W1)
-├── column.json
+├── column.json         # Per-node active telemetry columns (JSON reference)
 ├── relation.html
 ├── relation.json
 └── README.md
@@ -43,14 +38,12 @@ aienergy/
 
 ## Key scripts (nodes)
 
-- `nodes/endmeters.py` / `nodes/endmetersdata.py` — end-meter rollups and HTML data outputs.
-- `nodes/endmetersping.py` / `nodes/meterping.py` — ping/availability checks and continuity reports.
-- `nodes/grid.py` / `nodes/griddata.py` — utility/grid meter read and daily totals.
-- `nodes/solar.py` / `nodes/solardata.py` — solar/register diagnostics and delta checks.
-- `nodes/meterinfo.py` — meter registry / metadata helpers.
+- `nodes/endmetersuse.py` — multi-day end-meter consumption matrix (kWh); output `endmeterdata-{start}-{days}d.html`.
+- `nodes/endmetersdata.py` — multi-day end-meter continuity (actual vs expected logs); output `endmetersdata-{start}-{days}d.html` (legacy `endmetersping-*` still listed in dashboard history).
+- `nodes/endmeters.py` — single-day end-meter column status matrix (`endmeters-{date}.html`).
+- `nodes/griddata.py` — multi-day grid meter summary (import/export from energy registers).
+- `nodes/solardata.py` — multi-day solar (PV) generation summary from power registers.
 - `nodes/report.py` — orchestration scripts for composing aggregated reports.
-- `nodes/column.py` — column definitions / JSON export helpers.
-
 Run a script directly with Python, for example:
 
 ```bash
@@ -69,7 +62,7 @@ Launch the unified dashboard (bilingual EN/中文) to browse Grid, Solar, Meters
 python dashboard.py
 ```
 
-This starts a local server at http://localhost:5050 and opens the dashboard in your browser. Use the left sidebar to switch report types, select from history, or analyze a new date range. Reports are cached in `nodes/data/` and load instantly when selected from history.
+This starts a local server at http://localhost:5050 and opens the dashboard in your browser. Use the sidebar for Grid, Solar, and Report; **Meters** expands (chevron) to show **Meters** / **Data** / **Use** (`endmeters`, `endmetersdata`, `endmetersuse`). Single-day **Meters** uses **Start** only (Days dimmed). Reports live under `nodes/data/` and load from **History** without re-running analysis.
 
 ---
 

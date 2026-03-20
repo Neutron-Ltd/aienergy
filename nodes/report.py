@@ -3,7 +3,7 @@ AIENERGY Energy Balance Report
 ==============================
 Computes: (Grid Import + Solar) - Consumption and full data quality statistics.
 
-Data sources (matching griddata.py, solardata.py, endmetersdata.py):
+Data sources (matching griddata.py, solardata.py, endmetersuse.py):
 - Grid:  site_energy_{YYMMDD}, meter 1, ImpEP/ExpEP odometer deltas
 - Solar: site_power_{YYMMDD}, PV nodes from relation.json, Pt integration
 - Consumption: site_power_{YYMMDD}, end meters (leaf nodes) excluding 56,29,31,30
@@ -28,7 +28,7 @@ DB_CONFIG = {
     "database": "unified"
 }
 
-EXCLUDED_IDS = [56, 29, 31, 30]  # Solar + Storage (same as endmetersdata.py)
+EXCLUDED_IDS = [56, 29, 31, 30]  # Solar + Storage (same as endmetersuse.py)
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 JSON_FILE = os.path.join(SCRIPT_DIR, "..", "relation.json")
@@ -72,7 +72,7 @@ def get_renewable_nodes(node, target_list=None):
 
 
 def get_end_meters(node, end_meter_list=None):
-    """Leaf nodes excluding EXCLUDED_IDS (same as endmetersdata.py)."""
+    """Leaf nodes excluding EXCLUDED_IDS (same as endmetersuse.py)."""
     if end_meter_list is None:
         end_meter_list = []
     sub_nodes = node.get("sub_nodes", [])
@@ -172,7 +172,7 @@ def fetch_grid_data(cursor, dates, target_id=1):
 
 def fetch_power_based_data(cursor, dates, node_list, table_prefix="site_power"):
     """
-    Fetch data from site_power_* using Pt integration (same as solardata/endmetersdata).
+    Fetch data from site_power_* using Pt integration (same as solardata/endmetersuse).
     Returns per-day totals and statistics.
     """
     daily_totals = {d: 0.0 for d in dates}

@@ -20,29 +20,48 @@ PROJECT_ROOT = Path(__file__).resolve().parent
 NODES_DIR = PROJECT_ROOT / "nodes"
 DATA_DIR = NODES_DIR / "data"
 
-# Report type config: (script_path, filename_pattern, label)
+# Report type config
+# value_groups: 2 = regex captures (start, days), 1 = only start (days fixed at 1 for UI)
 REPORT_TYPES = {
     "grid": {
         "script": "nodes/griddata.py",
         "pattern": re.compile(r"^griddata-(\d{6})-(\d+)d\.html$"),
+        "value_groups": 2,
         "label_en": "Grid",
         "label_zh": "电网",
     },
     "solar": {
         "script": "nodes/solardata.py",
         "pattern": re.compile(r"^solardata-(\d{6})-(\d+)d\.html$"),
+        "value_groups": 2,
         "label_en": "Solar",
         "label_zh": "太阳能",
     },
-    "meters": {
-        "script": "nodes/endmetersdata.py",
+    "meters_use": {
+        "script": "nodes/endmetersuse.py",
         "pattern": re.compile(r"^endmeterdata-(\d{6})-(\d+)d\.html$"),
+        "value_groups": 2,
+        "label_en": "Use",
+        "label_zh": "用电",
+    },
+    "meters_matrix": {
+        "script": "nodes/endmeters.py",
+        "pattern": re.compile(r"^endmeters-(\d{6})\.html$"),
+        "value_groups": 1,
         "label_en": "Meters",
-        "label_zh": "电表",
+        "label_zh": "电表矩阵",
+    },
+    "meters_data": {
+        "script": "nodes/endmetersdata.py",
+        "pattern": re.compile(r"^endmetersdata-(\d{6})-(\d+)d\.html$"),
+        "value_groups": 2,
+        "label_en": "Data",
+        "label_zh": "数据",
     },
     "report": {
         "script": "nodes/report.py",
         "pattern": re.compile(r"^report-(\d{6})-(\d+)d\.html$"),
+        "value_groups": 2,
         "label_en": "Report",
         "label_zh": "报告",
     },
@@ -52,30 +71,74 @@ app = Flask(__name__, template_folder=str(PROJECT_ROOT / "templates"))
 
 
 def get_history(report_type: str):
-    """Scan nodes/data for report files matching the type. Return list of {label, path, start, days}."""
+    """Scan nodes/data for report files matching the type."""
     if report_type not in REPORT_TYPES:
         return []
     config = REPORT_TYPES[report_type]
-    pattern = config["pattern"]
+    patterns = [config["pattern"]]
+    # Legacy ping reports before rename (endmetersping.py → endmetersdata.py)
+    if report_type == "meters_data":
+        patterns.append(re.compile(r"^endmetersping-(\d{6})-(\d+)d\.html$"))
+    value_groups = config.get("value_groups", 2)
     results = []
+    seen_paths = set()
     if not DATA_DIR.exists():
         return results
     for f in DATA_DIR.iterdir():
         if not f.is_file() or not f.suffix == ".html":
             continue
-        m = pattern.match(f.name)
-        if m:
-            start, days = m.group(1), m.group(2)
+        if f.name in seen_paths:
+            continue
+        for pattern in patterns:
+            m = pattern.match(f.name)
+            if not m:
+                continue
+            if value_groups == 1:
+                start = m.group(1)
+                days = 1
+            else:
+                start, days = m.group(1), int(m.group(2))
             label = f"{config['label_en']} {start} {days}d"
+            if value_groups == 1:
+                label = f"{config['label_en']} {start}"
             results.append({
                 "label": label,
                 "path": f.name,
                 "start": start,
-                "days": int(days),
+                "days": days,
             })
-    # Sort by start date descending (newest first)
+            seen_paths.add(f.name)
+            break
     results.sort(key=lambda x: (x["start"], -x["days"]), reverse=True)
     return results
+
+
+def _expected_filename(report_type: str, start: str, days: int) -> str:
+    if report_type == "meters_matrix":
+        return f"endmeters-{start}.html"
+    if report_type == "meters_data":
+        return f"endmetersdata-{start}-{days}d.html"
+    if report_type == "meters_use":
+        return f"endmeterdata-{start}-{days}d.html"
+    if report_type == "grid":
+        return f"griddata-{start}-{days}d.html"
+    if report_type == "solar":
+        return f"solardata-{start}-{days}d.html"
+    if report_type == "report":
+        return f"report-{start}-{days}d.html"
+    raise ValueError(f"Unknown type {report_type}")
+
+
+def _build_analyze_command(report_type: str, start: str, days: int) -> list:
+    script_path = PROJECT_ROOT / REPORT_TYPES[report_type]["script"]
+    cmd = [sys.executable, str(script_path)]
+    if report_type == "meters_matrix":
+        cmd.extend(["--date", str(start), "--no-browser"])
+    else:
+        cmd.extend(["--start", str(start), "--days", str(days), "--no-browser"])
+    if report_type == "report":
+        cmd.extend(["--grid-id", "1"])
+    return cmd
 
 
 @app.route("/")
@@ -100,27 +163,19 @@ def api_analyze():
     data = request.get_json() or {}
     report_type = data.get("type", "grid")
     start = data.get("start", "260301")
-    days = data.get("days", 7)
+    days = int(data.get("days", 7) or 7)
 
     if report_type not in REPORT_TYPES:
         return jsonify({"success": False, "error": "Invalid report type"}), 400
 
-    config = REPORT_TYPES[report_type]
-    script_path = PROJECT_ROOT / config["script"]
-
+    script_path = PROJECT_ROOT / REPORT_TYPES[report_type]["script"]
     if not script_path.exists():
         return jsonify({"success": False, "error": f"Script not found: {script_path}"}), 500
 
-    # Build command: python nodes/griddata.py --start 260201 --days 7 --no-browser
-    cmd = [
-        sys.executable,
-        str(script_path),
-        "--start", str(start),
-        "--days", str(days),
-        "--no-browser",
-    ]
-    if report_type == "report":
-        cmd.extend(["--grid-id", "1"])
+    # Single-day matrix ignores days in script; still use start as YYMMDD
+    effective_days = 1 if report_type == "meters_matrix" else max(1, min(30, days))
+
+    cmd = _build_analyze_command(report_type, start, effective_days)
 
     try:
         result = subprocess.run(
@@ -128,7 +183,7 @@ def api_analyze():
             cwd=str(PROJECT_ROOT),
             capture_output=True,
             text=True,
-            timeout=120,
+            timeout=300,
         )
         if result.returncode != 0:
             return jsonify({
@@ -136,14 +191,7 @@ def api_analyze():
                 "error": result.stderr or result.stdout or "Unknown error",
             }), 500
 
-        # Output filenames match each script's convention
-        filenames = {
-            "grid": f"griddata-{start}-{days}d.html",
-            "solar": f"solardata-{start}-{days}d.html",
-            "meters": f"endmeterdata-{start}-{days}d.html",
-            "report": f"report-{start}-{days}d.html",
-        }
-        filename = filenames[report_type]
+        filename = _expected_filename(report_type, start, effective_days)
         report_path = DATA_DIR / filename
         if not report_path.exists():
             return jsonify({
@@ -164,7 +212,6 @@ def api_analyze():
 @app.route("/reports/<path:filename>")
 def serve_report(filename):
     """Serve generated report HTML files from nodes/data."""
-    # Security: ensure filename doesn't escape data dir
     if ".." in filename or filename.startswith("/"):
         return "Forbidden", 403
     return send_from_directory(DATA_DIR, filename)
