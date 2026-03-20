@@ -9,8 +9,7 @@ Tools for processing and reporting smart meter and energy register data from the
 
 ```
 aienergy/
-├── dashboard.py        # AI Energy Dashboard (Flask backend)
-├── run_dashboard.py    # Launch script for the dashboard
+├── dashboard.py        # AI Energy Dashboard (run: python dashboard.py)
 ├── templates/          # Dashboard HTML templates
 ├── db/                 # Database utilities and schema exports
 │   ├── connect.py      # Connection test
@@ -67,7 +66,7 @@ Check the top of each node script for configuration constants (date targets, met
 Launch the unified dashboard (bilingual EN/中文) to browse Grid, Solar, Meters, and Report data:
 
 ```bash
-python run_dashboard.py
+python dashboard.py
 ```
 
 This starts a local server at http://localhost:5050 and opens the dashboard in your browser. Use the left sidebar to switch report types, select from history, or analyze a new date range. Reports are cached in `nodes/data/` and load instantly when selected from history.

@@ -1,5 +1,6 @@
 """
-AI Energy Dashboard - Flask backend
+AI Energy Dashboard - Flask app and entry point
+Run: python dashboard.py
 Serves the dashboard UI and API for running analyses and viewing report history.
 """
 
@@ -7,6 +8,9 @@ import os
 import re
 import subprocess
 import sys
+import threading
+import time
+import webbrowser
 from pathlib import Path
 
 from flask import Flask, jsonify, render_template, request, send_from_directory
@@ -166,5 +170,26 @@ def serve_report(filename):
     return send_from_directory(DATA_DIR, filename)
 
 
+def _open_browser_delayed():
+    """Open browser after a short delay so the server is listening."""
+    time.sleep(1.2)
+    webbrowser.open("http://localhost:5050")
+
+
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5050, debug=True)
+    os.chdir(PROJECT_ROOT)
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+    port = 5050
+    url = f"http://localhost:{port}"
+    threading.Thread(target=_open_browser_delayed, daemon=True).start()
+
+    print("=" * 50)
+    print("  AI Energy Dashboard / 智能能源")
+    print("=" * 50)
+    print(f"  {url}")
+    print("=" * 50)
+    print("  Press Ctrl+C to stop")
+    print()
+
+    app.run(host="0.0.0.0", port=port, debug=False, use_reloader=False)
