@@ -1,7 +1,7 @@
 """
 AIENERGY Energy Balance Report
 ==============================
-Computes: (Grid Import + Solar) - Consumption and full data quality statistics.
+Computes: (Grid Import + Solar) - (Consumption + Grid Export) for balance; full data quality statistics.
 
 Data sources (matching griddata.py, solardata.py, endmetersuse.py):
 - Grid:  site_energy_{YYMMDD}, meter 1, ImpEP/ExpEP odometer deltas
@@ -278,11 +278,13 @@ def main(start_date, days, target_grid_id=1, open_browser=True):
         print(f"❌ DB Error: {e}")
         return
 
-    # Energy balance: (Grid Import + Solar) - Consumption
+    # Energy balance: (Grid Import + Solar) - (Consumption + Grid Export)
     supply = grid["total_import_kwh"] + solar["total_kwh"]
     consumption_total = consumption["total_kwh"]
-    energy_diff = supply - consumption_total
-    pct_diff = (energy_diff / consumption_total * 100) if consumption_total > 0 else 0
+    grid_export_total = grid["total_export_kwh"]
+    loads_out = consumption_total + grid_export_total
+    energy_diff = supply - loads_out
+    pct_diff = (energy_diff / loads_out * 100) if loads_out > 0 else 0
 
     # Build daily rows for the table
     daily_rows = []
@@ -290,14 +292,16 @@ def main(start_date, days, target_grid_id=1, open_browser=True):
         g = grid["daily"][i]
         s_kwh = solar["daily_totals"][d]
         c_kwh = consumption["daily_totals"][d]
+        g_exp = g.get("export", 0) or 0
         day_supply = g["import"] + s_kwh
-        day_diff = day_supply - c_kwh
+        day_diff = day_supply - c_kwh - g_exp
         daily_rows.append({
             "date": f"20{d[0:2]}-{d[2:4]}-{d[4:6]}",
             "grid_import": g["import"],
             "solar": s_kwh,
             "supply": day_supply,
             "consumption": c_kwh,
+            "grid_export": g_exp,
             "diff": day_diff,
             "grid_health": g["health"],
             "grid_interval": g.get("interval_min"),
@@ -312,8 +316,9 @@ def main(start_date, days, target_grid_id=1, open_browser=True):
             <td class="p-3 font-mono text-sm font-bold text-slate-700">{r['date']}</td>
             <td class="p-3 text-right font-mono text-xs text-emerald-700">{r['grid_import']:,.1f}</td>
             <td class="p-3 text-right font-mono text-xs text-amber-600">{r['solar']:,.1f}</td>
-            <td class="p-3 text-right font-mono text-xs font-bold text-slate-800">{r['supply']:,.1f}</td>
             <td class="p-3 text-right font-mono text-xs text-indigo-700">{r['consumption']:,.1f}</td>
+            <td class="p-3 text-right font-mono text-xs text-blue-700">{r['grid_export']:,.1f}</td>
+            <td class="p-3 text-right font-mono text-xs font-bold text-slate-800">{r['supply']:,.1f}</td>
             <td class="p-3 text-right font-mono text-xs font-bold {diff_cls}">{r['diff']:+,.1f}</td>
             <td class="p-3 text-center text-[10px] font-mono">{r['grid_interval'] or '—'}</td>
             <td class="p-3 text-center text-[10px] font-bold {'text-emerald-600' if r['grid_health']>=95 else 'text-amber-600' if r['grid_health']>0 else 'text-rose-600'}">{r['grid_health']:.0f}%</td>
@@ -343,7 +348,7 @@ def main(start_date, days, target_grid_id=1, open_browser=True):
             <header class="bg-white p-8 rounded-2xl shadow-sm border border-slate-200">
                 <h1 class="text-3xl font-black text-slate-900">Energy Balance Report / 能源平衡报告</h1>
                 <p class="text-slate-500 font-medium italic mt-1">
-                    Formula: (Grid Import + Solar) − Consumption / 公式:(电网输入+太阳能)−用电量 | {days}-Day Summary / {days}天汇总 | 20{start_date} → 20{end_date_str}
+                    Formula: (Grid Import + Solar) − (Consumption + Grid Export) / 公式:(电网输入+太阳能)−(用电+电网输出) | {days}-Day Summary / {days}天汇总 | 20{start_date} → 20{end_date_str}
                 </p>
                 <p class="text-slate-400 text-xs mt-2 font-mono">
                     Grid / 电网: {display_title} (ID:{target_grid_id}) • Solar / 太阳能: {len(solar_nodes)} nodes / 节点 • Consumption / 用电: {len(end_meters)} end meters / 末端电表
@@ -363,14 +368,14 @@ def main(start_date, days, target_grid_id=1, open_browser=True):
                     <span class="text-[10px] font-bold text-indigo-300 uppercase tracking-widest">Consumption / 用电量</span>
                     <div class="text-2xl font-black mt-1">{consumption_total:,.1f} <span class="text-sm font-light">kWh</span></div>
                 </div>
+                <div class="bg-blue-900 p-6 rounded-2xl shadow-xl text-white">
+                    <span class="text-[10px] font-bold text-blue-300 uppercase tracking-widest">Grid Export / 电网输出</span>
+                    <div class="text-2xl font-black mt-1">{grid_export_total:,.1f} <span class="text-sm font-light">kWh</span></div>
+                </div>
                 <div class="bg-slate-800 p-6 rounded-2xl shadow-xl text-white">
                     <span class="text-[10px] font-bold text-slate-300 uppercase tracking-widest">Energy Difference / 能源差值</span>
                     <div class="text-2xl font-black mt-1 {'text-emerald-300' if energy_diff >= 0 else 'text-rose-300'}">{energy_diff:+,.1f} <span class="text-sm font-light">kWh</span></div>
-                    <div class="text-xs text-slate-400 mt-1">({pct_diff:+.1f}% of consumption / 占用电量)</div>
-                </div>
-                <div class="bg-blue-900 p-6 rounded-2xl shadow-xl text-white">
-                    <span class="text-[10px] font-bold text-blue-300 uppercase tracking-widest">Grid Export / 电网输出</span>
-                    <div class="text-2xl font-black mt-1">{grid['total_export_kwh']:,.1f} <span class="text-sm font-light">kWh</span></div>
+                    <div class="text-xs text-slate-400 mt-1">({pct_diff:+.1f}% of Cons.+Exp. / 占用电+输出)</div>
                 </div>
             </div>
 
@@ -427,7 +432,7 @@ def main(start_date, days, target_grid_id=1, open_browser=True):
             <section class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
                 <div class="bg-slate-800 p-4 border-b border-slate-700 text-white flex justify-between items-center">
                     <h3 class="font-bold text-xs uppercase tracking-widest">Daily Energy Balance / 日能源平衡</h3>
-                    <span class="text-[10px] text-slate-400 font-mono">Supply = Grid Import + Solar / 供应=电网输入+太阳能 | Diff = Supply − Consumption / 差值=供应−用电</span>
+                    <span class="text-[10px] text-slate-400 font-mono">Supply = Grid Import + Solar / 供应=电网输入+太阳能 | Diff = Supply − (Consumption + Grid Export) / 差值=供应−(用电+电网输出)</span>
                 </div>
                 <div class="overflow-x-auto">
                     <table class="w-full text-sm">
@@ -436,8 +441,9 @@ def main(start_date, days, target_grid_id=1, open_browser=True):
                                 <th class="p-3 font-bold text-left">Date / 日期</th>
                                 <th class="p-3 font-bold text-right text-emerald-700">Grid Import / 电网输入</th>
                                 <th class="p-3 font-bold text-right text-amber-600">Solar / 太阳能</th>
-                                <th class="p-3 font-bold text-right">Supply / 供应</th>
                                 <th class="p-3 font-bold text-right text-indigo-700">Consumption / 用电</th>
+                                <th class="p-3 font-bold text-right text-blue-700">Grid Export / 电网输出</th>
+                                <th class="p-3 font-bold text-right">Supply / 供应</th>
                                 <th class="p-3 font-bold text-right">Diff (kWh) / 差值</th>
                                 <th class="p-3 font-bold text-center">Grid Intv / 电网间隔</th>
                                 <th class="p-3 font-bold text-center">Grid Health / 电网健康</th>
@@ -454,7 +460,8 @@ def main(start_date, days, target_grid_id=1, open_browser=True):
                     <li>• Grid / 电网: Odometer delta (ImpEP/ExpEP last − first) × (ratio/1000) from site_energy_*</li>
                     <li>• Solar / 太阳能: Σ(Pt) × ratio × (interval_min/60) from site_power_* for PV nodes / 光伏节点</li>
                     <li>• Consumption / 用电: Σ(Pt) × ratio × (interval_min/60) from site_power_* for end meters (excl. 56,29,31,30) / 末端电表(不含56,29,31,30)</li>
-                    <li>• Energy Diff &gt; 0: surplus (export, storage, losses) / 盈余; &lt; 0: shortfall or measurement gaps / 亏空或测量缺口</li>
+                    <li>• Energy Diff = (Grid Import + Solar) − (Consumption + Grid Export) / 能源差值=(电网输入+太阳能)−(用电+电网输出)</li>
+                    <li>• Diff &gt; 0: supply exceeds measured loads+export / 供应大于用电与输出之和; &lt; 0: shortfall or gaps / 亏空或测量缺口</li>
                 </ul>
             </section>
 
