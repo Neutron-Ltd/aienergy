@@ -13,5 +13,8 @@ services:
       MYSQL_USER: ${MYSQL_USER:-energy_user}
       MYSQL_PASSWORD: ${MYSQL_PASSWORD:-REDACTED}
       MYSQL_DATABASE: ${MYSQL_DATABASE:-unified}
+      MODEL_ARTIFACT_DIR: /app/model_artifacts
+    volumes:
+      - ./model_artifacts:/app/model_artifacts
     extra_hosts:
       - "host.docker.internal:host-gateway"
