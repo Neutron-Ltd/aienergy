@@ -44,7 +44,22 @@ class NodeAwareMLPredictor:
         self._models: Dict[int, TrainedModel] = {}
         self.artifacts_dir = Path(os.environ.get("MODEL_ARTIFACT_DIR", "/app/model_artifacts")).resolve()
         os.makedirs(self.artifacts_dir, exist_ok=True)
+        self._ensure_artifacts_writable()
         self.meta_path = Path(meta_path) if meta_path else self.artifacts_dir / "model_meta.json"
+
+    def _ensure_artifacts_writable(self) -> None:
+        """Ensure artifact directory exists and is writable."""
+        os.makedirs(self.artifacts_dir, exist_ok=True)
+        test_file = self.artifacts_dir / ".write_test"
+        try:
+            with test_file.open("w", encoding="utf-8") as f:
+                f.write("ok")
+            test_file.unlink(missing_ok=True)
+        except PermissionError as exc:
+            raise PermissionError(
+                f"Artifact directory is not writable: {self.artifacts_dir}. "
+                "Check docker volume permissions for ./model_artifacts -> /app/model_artifacts."
+            ) from exc
 
     def _model_file_path(self, node_id: int) -> Path:
         return self.artifacts_dir / f"node_{node_id}.joblib"
@@ -53,6 +68,7 @@ class NodeAwareMLPredictor:
         return self.artifacts_dir / f"node_{node_id}.meta.json"
 
     def _persist_model(self, node_id: int, trained: TrainedModel) -> None:
+        self._ensure_artifacts_writable()
         model_path = self._model_file_path(node_id)
         sidecar_path = self._model_sidecar_path(node_id)
         with model_path.open("wb") as f:

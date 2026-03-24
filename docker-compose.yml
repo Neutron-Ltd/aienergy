@@ -1,6 +1,7 @@
 services:
   web:
     build: .
+    user: "0:0"
     ports:
       - "${HOST_PORT:-5050}:5050"
     environment:
@@ -18,3 +19,7 @@ services:
       - ./model_artifacts:/app/model_artifacts
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    command: >
+      sh -c "mkdir -p /app/model_artifacts &&
+             chmod -R 777 /app/model_artifacts &&
+             python dashboard.py"

@@ -102,6 +102,9 @@
                             <button type="button" class="meters-child sidebar-subitem w-full text-left px-3 py-2.5 rounded-md text-sm" data-type="meters_use">
                                 <span class="font-medium text-slate-800">Use / 用电</span>
                             </button>
+                            <button type="button" class="meters-child sidebar-subitem w-full text-left px-3 py-2.5 rounded-md text-sm" data-type="meters_ai">
+                                <span class="font-medium text-slate-800">AI / 预测</span>
+                            </button>
                         </div>
                     </div>
                 </div>
@@ -148,6 +151,14 @@
                     <input type="number" id="days-input" min="1" max="30" value="7"
                         class="bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono w-16 focus:outline-none focus:ring-2 focus:ring-indigo-400">
                 </div>
+                <div id="ai-model-wrap" class="hidden items-center gap-2">
+                    <label class="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                        <span class="en">Model Dir</span> <span class="text-slate-400">/</span> <span class="zh">模型目录</span>
+                    </label>
+                    <input type="text" id="ai-model-dir" value="model_artifacts"
+                        class="bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono w-56 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                        placeholder="model_artifacts">
+                </div>
                 <button id="analyze-btn" type="button"
                     class="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-sm rounded-lg shadow-md shadow-indigo-200 transition-colors flex items-center gap-2">
                     <span class="en">Analyze</span> <span class="zh opacity-90">分析</span>
@@ -185,6 +196,8 @@
         const startDate = document.getElementById('start-date');
         const daysInput = document.getElementById('days-input');
         const daysWrap = document.getElementById('days-wrap');
+        const aiModelWrap = document.getElementById('ai-model-wrap');
+        const aiModelDir = document.getElementById('ai-model-dir');
         const analyzeBtn = document.getElementById('analyze-btn');
         const statusMsg = document.getElementById('status-msg');
         const emptyState = document.getElementById('empty-state');
@@ -238,13 +251,21 @@
         }
 
         function updateDaysVisibility() {
-            const singleDay = currentType === 'meters_matrix';
+            const singleDay = currentType === 'meters_matrix' || currentType === 'meters_ai';
             if (singleDay) {
                 daysWrap.classList.add('opacity-40', 'pointer-events-none');
                 daysWrap.title = 'Single-day report / 单日报告 — Days not used';
+                daysInput.value = 1;
             } else {
                 daysWrap.classList.remove('opacity-40', 'pointer-events-none');
                 daysWrap.title = '';
+            }
+            if (currentType === 'meters_ai') {
+                aiModelWrap.classList.remove('hidden');
+                aiModelWrap.classList.add('flex');
+            } else {
+                aiModelWrap.classList.add('hidden');
+                aiModelWrap.classList.remove('flex');
             }
         }
 
@@ -298,7 +319,7 @@
             const dateMatch = startValue.match(/^(\d{4})-(\d{2})-(\d{2})$/);
             const start = dateMatch ? dateMatch[1].slice(2) + dateMatch[2] + dateMatch[3] : '';
             let days = parseInt(daysInput.value, 10) || 7;
-            if (currentType === 'meters_matrix') days = 1;
+            if (currentType === 'meters_matrix' || currentType === 'meters_ai') days = 1;
             if (!start) {
                 setStatus('Please select a valid start date', true);
                 return;
@@ -306,10 +327,14 @@
             setLoading(true);
             setStatus('');
             try {
+                const payload = { type: currentType, start, days };
+                if (currentType === 'meters_ai') {
+                    payload.model_dir = aiModelDir.value.trim() || 'model_artifacts';
+                }
                 const res = await fetch('/api/analyze', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ type: currentType, start, days }),
+                    body: JSON.stringify(payload),
                 });
                 if (redirectIfUnauthorized(res)) return;
                 const data = await res.json();

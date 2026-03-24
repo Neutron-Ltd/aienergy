@@ -67,6 +67,13 @@ REPORT_TYPES = {
         "label_en": "Use",
         "label_zh": "用电",
     },
+    "meters_ai": {
+        "script": "nodes/endmetersai.py",
+        "pattern": re.compile(r"^endmetersai-(\d{6})\.html$"),
+        "value_groups": 1,
+        "label_en": "AI",
+        "label_zh": "AI预测",
+    },
     "meters_matrix": {
         "script": "nodes/endmeters.py",
         "pattern": re.compile(r"^endmeters-(\d{6})\.html$"),
@@ -246,6 +253,8 @@ def get_history(report_type: str):
 def _expected_filename(report_type: str, start: str, days: int) -> str:
     if report_type == "meters_matrix":
         return f"endmeters-{start}.html"
+    if report_type == "meters_ai":
+        return f"endmetersai-{start}.html"
     if report_type == "meters_data":
         return f"endmetersdata-{start}-{days}d.html"
     if report_type == "meters_use":
@@ -262,13 +271,23 @@ def _expected_filename(report_type: str, start: str, days: int) -> str:
 def _build_analyze_command(report_type: str, start: str, days: int) -> list:
     script_path = PROJECT_ROOT / REPORT_TYPES[report_type]["script"]
     cmd = [sys.executable, str(script_path)]
-    if report_type == "meters_matrix":
+    if report_type in {"meters_matrix", "meters_ai"}:
         cmd.extend(["--date", str(start), "--no-browser"])
     else:
         cmd.extend(["--start", str(start), "--days", str(days), "--no-browser"])
     if report_type == "report":
         cmd.extend(["--grid-id", "1"])
     return cmd
+
+
+def _resolve_model_artifacts_dir(value: str | None) -> Path:
+    txt = str(value or "").strip()
+    if not txt:
+        return MODEL_ARTIFACTS_DIR
+    candidate = Path(txt)
+    if not candidate.is_absolute():
+        candidate = (PROJECT_ROOT / candidate).resolve()
+    return candidate.resolve()
 
 
 @app.route("/")
@@ -309,7 +328,7 @@ def api_analyze():
         return jsonify({"success": False, "error": f"Script not found: {script_path}"}), 500
 
     # Single-day matrix ignores days in script; still use start as YYMMDD
-    effective_days = 1 if report_type == "meters_matrix" else max(1, min(30, days))
+    effective_days = 1 if report_type in {"meters_matrix", "meters_ai"} else max(1, min(30, days))
 
     cmd = _build_analyze_command(report_type, start, effective_days)
 
@@ -320,6 +339,11 @@ def api_analyze():
         if sub_env.get("PYTHONPATH")
         else pr
     )
+    if report_type == "meters_ai":
+        model_dir = _resolve_model_artifacts_dir(data.get("model_dir"))
+        if not model_dir.exists() or not model_dir.is_dir():
+            return jsonify({"success": False, "error": f"Model directory not found: {model_dir}"}), 400
+        sub_env["MODEL_ARTIFACT_DIR"] = str(model_dir)
     try:
         result = subprocess.run(
             cmd,
