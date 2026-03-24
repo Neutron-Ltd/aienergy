@@ -430,19 +430,53 @@ def _parse_start_end_dates(payload: dict) -> tuple[datetime, datetime]:
     return start_dt, end_dt
 
 
-def _train_job(task_id: str, node_ids: list[int], start_dt, end_dt):
+def _train_job(task_id: str, start_dt, end_dt):
     _set_task_state(task_id=task_id, task_type="train", status="running", progress=1, append_log="Starting model training...")
     try:
+        from model.db_handler import DBHandler
         from model.ml_predictor import NodeAwareMLPredictor
         from model.topology_engine import TopologyEngine
 
         topology = TopologyEngine(PROJECT_ROOT / "relation.json")
         predictor = NodeAwareMLPredictor(topology=topology)
+        db = DBHandler(interval_minutes=15)
+        node_ids = sorted({int(node_id) for node_id in topology.all_node_ids()})
+        total_nodes = len(node_ids)
+        if total_nodes == 0:
+            _set_task_state(status="failed", progress=100, append_log="Training task failed: no nodes found in topology.")
+            return
+
         _set_task_state(append_log=f"Training range: {start_dt.date()} -> {end_dt.date()}", progress=3)
-        predictor.train_models(
-            node_ids=node_ids,
-            start_date=start_dt.strftime("%Y-%m-%d"),
-            end_date=end_dt.strftime("%Y-%m-%d"),
+        _set_task_state(append_log=f"Discovered {total_nodes} nodes from topology. Training all nodes without filtering.")
+
+        root_df = db.fetch_timeseries(1, start_dt, end_dt, metric="power")
+        main_grid_load = root_df["Pt"] if "Pt" in root_df.columns else None
+
+        success_count = 0
+        fail_count = 0
+        for idx, node_id in enumerate(node_ids, start=1):
+            progress = 3 + int((idx / total_nodes) * 95)
+            _set_task_state(progress=progress, append_log=f"Training model for Node {node_id} ({idx}/{total_nodes})...")
+            try:
+                meter_df = db.fetch_timeseries(node_id, start_dt, end_dt, metric="power")
+                if "Pt" not in meter_df.columns:
+                    raise ValueError("missing Pt column")
+                predictor.train(
+                    node_id=node_id,
+                    target_series=meter_df["Pt"],
+                    main_grid_load=main_grid_load,
+                    neighboring_pv=None,
+                    save_metrics=True,
+                )
+                success_count += 1
+            except Exception as node_exc:
+                fail_count += 1
+                _set_task_state(
+                    append_log=f"Node {node_id} failed: {node_exc}. Continuing..."
+                )
+
+        _set_task_state(
+            append_log=f"Training completed. Success: {success_count}, Failed: {fail_count}, Total: {total_nodes}."
         )
         _set_task_state(progress=100, status="completed", append_log="Training workflow completed.")
     except Exception as exc:
@@ -476,13 +510,6 @@ def _impute_job(task_id: str, node_id: int, start_dt, end_dt):
 def api_train():
     """Trigger async model training."""
     payload = request.get_json(silent=True) or {}
-    nodes = payload.get("node_ids") or [29, 30, 31, 56]
-    if not isinstance(nodes, list) or not nodes:
-        return jsonify({"success": False, "error": "node_ids must be a non-empty list"}), 400
-    try:
-        node_ids = [int(x) for x in nodes]
-    except Exception:
-        return jsonify({"success": False, "error": "node_ids must contain integers"}), 400
 
     try:
         start_dt, end_dt = _parse_start_end_dates(payload)
@@ -491,7 +518,7 @@ def api_train():
 
     task_id = str(uuid.uuid4())
     _set_task_state(task_id=task_id, task_type="train", status="queued", progress=0, append_log="Training task queued.")
-    thread = threading.Thread(target=_train_job, args=(task_id, node_ids, start_dt, end_dt), daemon=True)
+    thread = threading.Thread(target=_train_job, args=(task_id, start_dt, end_dt), daemon=True)
     thread.start()
     return jsonify({"success": True, "task_id": task_id})
 
