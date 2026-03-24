@@ -71,6 +71,38 @@
                     <p id="progress-text" class="mt-2 text-sm text-slate-600">Idle / 空闲</p>
                     <div id="terminal-output" class="mt-4 rounded-lg bg-slate-900 text-slate-100 font-mono text-xs p-4 h-64 overflow-y-auto whitespace-pre-wrap"></div>
                 </section>
+
+                <section class="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
+                    <h3 class="text-sm font-semibold uppercase tracking-wide text-slate-500 mb-4">Training Logic / 训练逻辑说明</h3>
+                    <div class="space-y-3 text-sm text-slate-700">
+                        <p class="leading-relaxed">
+                            <span class="font-semibold text-slate-900">Overview (EN):</span>
+                            Training builds node-specific models over your selected date range. The pipeline reads 15-minute power data, applies meter ratios, creates time/context features, and persists model artifacts for reuse during imputation.
+                        </p>
+                        <p class="leading-relaxed">
+                            <span class="font-semibold text-slate-900">概览 (中文):</span>
+                            训练会基于你选择的时间范围为每个节点构建专属模型。流程会读取15分钟粒度功率数据、应用电表倍率、生成时间与上下文特征，并保存模型文件供后续缺失修复复用。
+                        </p>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            <div class="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                                <p class="font-semibold text-slate-900">Feature Strategy (EN)</p>
+                                <p class="mt-1 text-slate-600">PV uses daylight constraints and neighboring PV context; load nodes use hour/day/week patterns plus main-grid context; storage uses schedule-like charge/discharge time windows.</p>
+                            </div>
+                            <div class="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                                <p class="font-semibold text-slate-900">特征策略 (中文)</p>
+                                <p class="mt-1 text-slate-600">光伏节点结合白天约束和邻近光伏上下文；负载节点结合小时/星期规律与主电网负载；储能节点结合充放电时段特征。</p>
+                            </div>
+                            <div class="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                                <p class="font-semibold text-slate-900">Model Selection (EN)</p>
+                                <p class="mt-1 text-slate-600">Model priority is XGBoost, then RandomForest, then a historical profile fallback. Training metrics (R²/RMSE/accuracy) are written to model metadata.</p>
+                            </div>
+                            <div class="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                                <p class="font-semibold text-slate-900">模型选择 (中文)</p>
+                                <p class="mt-1 text-slate-600">模型优先级为 XGBoost，其次 RandomForest，最后回退到历史画像法。训练完成后会写入 R²/RMSE/准确率等指标。</p>
+                            </div>
+                        </div>
+                    </div>
+                </section>
             </div>
 {% endblock %}
 
