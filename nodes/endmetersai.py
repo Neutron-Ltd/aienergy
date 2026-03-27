@@ -14,6 +14,7 @@ if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
 from db.mysql_env import mysql_connect_kwargs
+from model.db_handler import DBHandler
 from model.ml_predictor import NodeAwareMLPredictor
 from model.topology_engine import TopologyEngine
 
@@ -87,8 +88,8 @@ def main(start_date, days=7, model_dir=None, open_browser=True):
 
     try:
         with open(JSON_FILE, "r", encoding="utf-8") as f:
-            tree_data = json.load(f)
-        end_nodes = get_end_meters(tree_data.get("root_node", {}))
+            topology_data = json.load(f)
+        end_nodes = get_end_meters(topology_data.get("root_node", {}))
     except Exception as e:
         print(f"❌ JSON Error: {e}")
         return
@@ -100,6 +101,7 @@ def main(start_date, days=7, model_dir=None, open_browser=True):
     try:
         topology = TopologyEngine(Path(JSON_FILE))
         predictor = NodeAwareMLPredictor(topology=topology)
+        db_handler = DBHandler(interval_minutes=15)
         conn = mysql.connector.connect(**DB_CONFIG)
         cursor = conn.cursor(dictionary=True)
     except Exception as e:
@@ -139,13 +141,18 @@ def main(start_date, days=7, model_dir=None, open_browser=True):
 
             # Main grid context sampled to daily 15-minute index.
             try:
-                cursor.execute(f"SELECT ts, Pt FROM {table} WHERE meter_number = %s ORDER BY ts ASC", (1,))
-                root_df = pd.DataFrame(cursor.fetchall())
+                root_df = db_handler.fetch_timeseries(
+                    meter_number=1,
+                    start_ts=day_start,
+                    end_ts=day_end,
+                    metric="power",
+                )
+                root_series = db_handler.extract_power_series(root_df)
                 main_grid_load = None
-                if not root_df.empty:
-                    root_df["ts"] = pd.to_datetime(root_df["ts"])
-                    root_series = pd.Series(pd.to_numeric(root_df["Pt"], errors="coerce").values, index=root_df["ts"]).sort_index()
-                    main_grid_load = root_series.reindex(target_index).ffill().fillna(0.0)
+                if root_series is not None:
+                    root_series = root_series.sort_index().reindex(target_index)
+                    mean_value = float(root_series.mean()) if root_series.notna().any() else 0.0
+                    main_grid_load = root_series.fillna(mean_value).fillna(0.0)
             except Exception:
                 main_grid_load = None
 

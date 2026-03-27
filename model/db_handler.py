@@ -86,6 +86,19 @@ class DBHandler:
             count = cursor.fetchone()[0]
         return bool(count)
 
+    def _table_columns(self, table_name: str) -> set[str]:
+        conn = self.connect()
+        query = """
+            SELECT column_name
+            FROM information_schema.columns
+            WHERE table_schema = DATABASE()
+              AND table_name = %s
+        """
+        with conn.cursor() as cursor:
+            cursor.execute(query, (table_name,))
+            rows = cursor.fetchall()
+        return {str(row[0]) for row in rows}
+
     def _fetch_ratio(self, meter_number: int) -> float:
         conn = self.connect()
         query = """
@@ -108,7 +121,9 @@ class DBHandler:
         value_columns: Sequence[str],
     ) -> pd.DataFrame:
         conn = self.connect()
-        selected_columns = ", ".join(["ts", "meter_number", *value_columns])
+        available_columns = self._table_columns(table_name)
+        selected_value_columns = [col for col in value_columns if col in available_columns]
+        selected_columns = ", ".join(["ts", "meter_number", *selected_value_columns])
         query = f"""
             SELECT {selected_columns}
             FROM {table_name}
@@ -118,7 +133,23 @@ class DBHandler:
             ORDER BY ts ASC
         """
         params = (meter_number, start_ts, end_ts)
-        return pd.read_sql(query, conn, params=params, parse_dates=["ts"])
+        out = pd.read_sql(query, conn, params=params, parse_dates=["ts"])
+        for col in value_columns:
+            if col not in out.columns:
+                out[col] = pd.NA
+        return out
+
+    @staticmethod
+    def extract_power_series(df: pd.DataFrame) -> Optional[pd.Series]:
+        """Extract a normalized power series from a DataFrame with varying column names."""
+        if df.empty:
+            return None
+        canonical = {str(col).strip().lower(): str(col) for col in df.columns}
+        for key in ("pt", "p_total", "total_power", "power", "kw"):
+            if key in canonical:
+                col = canonical[key]
+                return pd.to_numeric(df[col], errors="coerce")
+        return None
 
     def fetch_timeseries(
         self,
@@ -216,10 +247,11 @@ class DBHandler:
                 end_ts=end_ts,
                 metric="power",
             )
-            if "Pt" not in meter_df.columns:
+            power_series = self.extract_power_series(meter_df)
+            if power_series is None:
                 continue
             col_name = str(meter)
-            frames.append(meter_df[["Pt"]].rename(columns={"Pt": col_name}))
+            frames.append(power_series.rename(col_name).to_frame())
         if not frames:
             idx = pd.date_range(start=start_ts, end=end_ts, freq=f"{self.interval_minutes}min")
             return pd.DataFrame(index=idx)

@@ -94,11 +94,11 @@
                             </div>
                             <div class="rounded-lg border border-slate-200 bg-slate-50 p-3">
                                 <p class="font-semibold text-slate-900">Model Selection (EN)</p>
-                                <p class="mt-1 text-slate-600">Model priority is XGBoost, then RandomForest, then a historical profile fallback. Training metrics (R²/RMSE/accuracy) are written to model metadata.</p>
+                                <p class="mt-1 text-slate-600">Model training uses LinearRegression for all eligible nodes. Training metrics (R²/RMSE/accuracy) are written to model metadata.</p>
                             </div>
                             <div class="rounded-lg border border-slate-200 bg-slate-50 p-3">
                                 <p class="font-semibold text-slate-900">模型选择 (中文)</p>
-                                <p class="mt-1 text-slate-600">模型优先级为 XGBoost，其次 RandomForest，最后回退到历史画像法。训练完成后会写入 R²/RMSE/准确率等指标。</p>
+                                <p class="mt-1 text-slate-600">所有符合条件的节点统一使用 LinearRegression 训练。训练完成后会写入 R²/RMSE/准确率等指标。</p>
                             </div>
                         </div>
                     </div>

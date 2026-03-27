@@ -12,6 +12,7 @@ from typing import Dict, Optional, Sequence
 
 import numpy as np
 import pandas as pd
+from sklearn.linear_model import LinearRegression
 
 from .db_handler import DBHandler
 from .topology_engine import TopologyEngine
@@ -31,7 +32,7 @@ class TrainedModel:
 
 
 class NodeAwareMLPredictor:
-    """Train and infer node-specific models for long-gap imputation.
+    """Train and infer node-specific LinearRegression models for long-gap imputation.
 
     The predictor uses category-aware features:
     - PV nodes: daylight gating + neighboring PV context.
@@ -46,6 +47,7 @@ class NodeAwareMLPredictor:
         os.makedirs(self.artifacts_dir, exist_ok=True)
         self._ensure_artifacts_writable()
         self.meta_path = Path(meta_path) if meta_path else self.artifacts_dir / "model_meta.json"
+        self._excluded_prediction_nodes: set[int] = {1, 56, 29, 31, 30}
 
     def _ensure_artifacts_writable(self) -> None:
         """Ensure artifact directory exists and is writable."""
@@ -103,7 +105,7 @@ class NodeAwareMLPredictor:
         trained = TrainedModel(
             model=model,
             feature_columns=list(sidecar.get("feature_columns", [])),
-            strategy=str(sidecar.get("strategy", "historical_profile")),
+            strategy=str(sidecar.get("strategy", "linear_regression")),
         )
         self._models[node_id] = trained
         print(f"[NodeAwareMLPredictor] Loaded model from: {model_path}")
@@ -117,15 +119,27 @@ class NodeAwareMLPredictor:
 
     def _build_time_features(self, index: pd.DatetimeIndex) -> pd.DataFrame:
         df = pd.DataFrame(index=index)
-        df["hour"] = index.hour
+        hour_float = index.hour + index.minute / 60.0
         df["minute"] = index.minute
-        df["day_of_week"] = index.dayofweek
         df["month"] = index.month
         df["is_weekend"] = (index.dayofweek >= 5).astype(int)
-        # Cyclical encodings.
-        df["sin_hour"] = np.sin(2 * np.pi * (index.hour + index.minute / 60.0) / 24.0)
-        df["cos_hour"] = np.cos(2 * np.pi * (index.hour + index.minute / 60.0) / 24.0)
+        # Cyclical encodings for linear models.
+        df["sin_hour"] = np.sin(2 * np.pi * hour_float / 24.0)
+        df["cos_hour"] = np.cos(2 * np.pi * hour_float / 24.0)
+        df["sin_dayofweek"] = np.sin(2 * np.pi * index.dayofweek / 7.0)
+        df["cos_dayofweek"] = np.cos(2 * np.pi * index.dayofweek / 7.0)
         return df
+
+    def _prepare_main_grid_load(
+        self,
+        index: pd.DatetimeIndex,
+        main_grid_load: Optional[pd.Series],
+    ) -> Optional[pd.Series]:
+        if main_grid_load is None:
+            return None
+        series = pd.to_numeric(main_grid_load.reindex(index), errors="coerce")
+        mean_value = float(series.mean()) if series.notna().any() else 0.0
+        return series.fillna(mean_value).fillna(0.0)
 
     def _build_features(
         self,
@@ -150,44 +164,13 @@ class NodeAwareMLPredictor:
             feats["is_peak_window"] = (((index.hour >= 9) & (index.hour <= 12)) | ((index.hour >= 18) & (index.hour <= 21))).astype(int)
 
         if main_grid_load is not None:
-            # Use ffill() for compatibility across pandas versions.
-            feats["main_grid_load"] = main_grid_load.reindex(index).ffill().fillna(0.0)
+            feats["main_grid_load"] = self._prepare_main_grid_load(index=index, main_grid_load=main_grid_load)
 
         return feats
 
     def _build_model(self) -> tuple[object, str]:
-        # Priority: XGBoost, then sklearn RandomForest, else profile fallback.
-        try:
-            from xgboost import XGBRegressor  # type: ignore
-
-            model = XGBRegressor(
-                n_estimators=250,
-                max_depth=6,
-                learning_rate=0.05,
-                subsample=0.85,
-                colsample_bytree=0.85,
-                objective="reg:squarederror",
-                random_state=42,
-            )
-            return model, "xgboost"
-        except Exception:
-            pass
-
-        try:
-            from sklearn.ensemble import RandomForestRegressor  # type: ignore
-
-            model = RandomForestRegressor(
-                n_estimators=300,
-                max_depth=18,
-                random_state=42,
-                n_jobs=-1,
-            )
-            return model, "random_forest"
-        except Exception:
-            pass
-
-        # Deterministic profile fallback.
-        return object(), "historical_profile"
+        model = LinearRegression()
+        return model, "linear_regression"
 
     def train(
         self,
@@ -198,6 +181,8 @@ class NodeAwareMLPredictor:
         save_metrics: bool = True,
     ) -> TrainedModel:
         """Train or refresh a model for one node."""
+        if node_id in self._excluded_prediction_nodes:
+            raise PredictionError(f"Node {node_id} is excluded from ML training.")
         if target_series.empty:
             raise PredictionError("Training series is empty.")
 
@@ -218,24 +203,6 @@ class NodeAwareMLPredictor:
         y_train = y.loc[valid_mask]
 
         model, strategy = self._build_model()
-        if strategy == "historical_profile":
-            profile = (
-                y_train.groupby([y_train.index.dayofweek, y_train.index.hour, y_train.index.minute])
-                .mean()
-                .rename("expected")
-            )
-            trained = TrainedModel(model=profile, feature_columns=[], strategy=strategy)
-            self._models[node_id] = trained
-            self._persist_model(node_id=node_id, trained=trained)
-            if save_metrics:
-                self._save_training_metrics(
-                    node_id=node_id,
-                    model_type=strategy,
-                    y_true=y_train,
-                    y_pred=self.predict(node_id=node_id, target_index=y_train.index),
-                )
-            return trained
-
         try:
             model.fit(X_train, y_train)
         except Exception as exc:
@@ -317,6 +284,8 @@ class NodeAwareMLPredictor:
         neighboring_pv: Optional[pd.DataFrame] = None,
     ) -> pd.Series:
         """Predict node load/generation on the provided timestamps."""
+        if node_id in self._excluded_prediction_nodes:
+            raise PredictionError(f"Node {node_id} is excluded from ML prediction.")
         if node_id not in self._models:
             raise PredictionError(
                 f"No trained model found for node {node_id}. Call train() first."
@@ -330,25 +299,12 @@ class NodeAwareMLPredictor:
             neighboring_pv=neighboring_pv,
         )
 
-        if trained.strategy == "historical_profile":
-            profile = trained.model  # pandas.Series
-            keys = list(
-                zip(
-                    target_index.dayofweek.tolist(),
-                    target_index.hour.tolist(),
-                    target_index.minute.tolist(),
-                )
-            )
-            pred = pd.Series([profile.get(k, np.nan) for k in keys], index=target_index, dtype=float)
-            if pred.isna().any():
-                pred = pred.fillna(float(profile.mean()) if len(profile) else 0.0)
-            return pred
-
         try:
             preds = trained.model.predict(X[trained.feature_columns])
         except Exception as exc:
             raise PredictionError(f"Prediction failed for node {node_id}: {exc}") from exc
 
+        preds = np.clip(preds, a_min=0.0, a_max=None)
         series = pd.Series(preds, index=target_index, dtype=float)
         category = self.topology.category(node_id)
         if self._is_pv(category):
@@ -369,7 +325,7 @@ class NodeAwareMLPredictor:
         """Train models for multiple nodes."""
         trained: Dict[int, TrainedModel] = {}
         for node_id in node_ids:
-            if node_id not in series_map:
+            if node_id in self._excluded_prediction_nodes or node_id not in series_map:
                 continue
             trained[node_id] = self.train(
                 node_id=node_id,
@@ -418,16 +374,21 @@ class NodeAwareMLPredictor:
 
         db = db_handler or DBHandler(interval_minutes=15)
         root_df = db.fetch_timeseries(1, start_dt, end_dt, metric="power")
-        main_grid_load = root_df["Pt"] if "Pt" in root_df.columns else None
+        main_grid_load = db.extract_power_series(root_df)
+        if main_grid_load is not None:
+            main_grid_load = self._prepare_main_grid_load(index=main_grid_load.index, main_grid_load=main_grid_load)
 
         trained: Dict[int, TrainedModel] = {}
         for node_id in node_ids:
+            if node_id in self._excluded_prediction_nodes:
+                continue
             meter_df = db.fetch_timeseries(node_id, start_dt, end_dt, metric="power")
-            if "Pt" not in meter_df.columns:
+            meter_pt = db.extract_power_series(meter_df)
+            if meter_pt is None:
                 continue
             trained[node_id] = self.train(
                 node_id=node_id,
-                target_series=meter_df["Pt"],
+                target_series=meter_pt,
                 main_grid_load=main_grid_load,
                 neighboring_pv=None,
                 save_metrics=True,
