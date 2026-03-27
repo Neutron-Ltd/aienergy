@@ -4,7 +4,7 @@ import argparse
 import webbrowser
 from pathlib import Path
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import mysql.connector
 import pandas as pd
@@ -72,12 +72,18 @@ def to_15min_actual_grid(raw_df: pd.DataFrame, target_index: pd.DatetimeIndex, r
     return slot_mean.reindex(target_index)
 
 
-def main(date_suffix, model_dir=None, open_browser=True):
-    report_file = os.path.join(OUTPUT_DIR, f"endmetersai-{date_suffix}.html")
-    print(f"Starting End Meter AI Prediction for 20{date_suffix}...")
+def generate_date_range(start_date_str, days=7):
+    start_dt = datetime.strptime(f"20{start_date_str}", "%Y%m%d")
+    return [(start_dt + timedelta(days=i)).strftime("%y%m%d") for i in range(days)]
+
+
+def main(start_date, days=7, model_dir=None, open_browser=True):
+    report_file = os.path.join(OUTPUT_DIR, f"endmetersai-{start_date}-{days}d.html")
+    print(f"Starting End Meter AI Prediction for 20{start_date}, {days} day(s)...")
     artifacts_dir = Path(model_dir).resolve() if model_dir else (_ROOT / "model_artifacts").resolve()
     os.environ["MODEL_ARTIFACT_DIR"] = str(artifacts_dir)
     print(f"Model artifacts directory: {artifacts_dir}")
+    dates = generate_date_range(start_date, days)
 
     try:
         with open(JSON_FILE, "r", encoding="utf-8") as f:
@@ -92,30 +98,10 @@ def main(date_suffix, model_dir=None, open_browser=True):
         return
 
     try:
-        target_day = datetime.strptime(f"20{date_suffix}", "%Y%m%d")
-    except ValueError:
-        print("❌ Invalid date. Expected YYMMDD.")
-        return
-
-    start_dt = target_day.replace(hour=0, minute=0, second=0, microsecond=0)
-    end_dt = target_day.replace(hour=23, minute=59, second=59, microsecond=0)
-    target_index = pd.date_range(start=start_dt, end=end_dt, freq="15min")
-
-    try:
         topology = TopologyEngine(Path(JSON_FILE))
         predictor = NodeAwareMLPredictor(topology=topology)
         conn = mysql.connector.connect(**DB_CONFIG)
         cursor = conn.cursor(dictionary=True)
-        table = f"site_power_{date_suffix}"
-
-        # Main grid context sampled to 15-minute index.
-        cursor.execute(f"SELECT ts, Pt FROM {table} WHERE meter_number = %s ORDER BY ts ASC", (1,))
-        root_df = pd.DataFrame(cursor.fetchall())
-        main_grid_load = None
-        if not root_df.empty:
-            root_df["ts"] = pd.to_datetime(root_df["ts"])
-            root_series = pd.Series(pd.to_numeric(root_df["Pt"], errors="coerce").values, index=root_df["ts"]).sort_index()
-            main_grid_load = root_series.reindex(target_index).ffill().fillna(0.0)
     except Exception as e:
         print(f"❌ Initialization Error: {e}")
         return
@@ -126,48 +112,87 @@ def main(date_suffix, model_dir=None, open_browser=True):
     total_blended_kwh = 0.0         # actual.fillna(predicted)
     loaded_models = 0
 
+    model_cache = {}
     for node in end_nodes:
         nid = node["id"]
-        try:
-            cursor.execute("SELECT ratio FROM meter_info WHERE meter_number = %s", (nid,))
-            ratio_row = cursor.fetchone()
-            ratio = float(ratio_row["ratio"]) if ratio_row and ratio_row.get("ratio") is not None else 1.0
-
-            cursor.execute(f"SELECT ts, Pt FROM {table} WHERE meter_number = %s ORDER BY ts ASC", (nid,))
-            raw_df = pd.DataFrame(cursor.fetchall())
-            actual_grid = to_15min_actual_grid(raw_df, target_index=target_index, ratio=ratio)
-            health = float(actual_grid.notna().mean() * 100.0) if len(actual_grid.index) else 0.0
-        except Exception:
-            actual_grid = pd.Series(index=target_index, dtype=float)
-            health = 0.0
-
+        actual_kwh = 0.0
         recovered_kwh = 0.0
         blended_kwh = 0.0
+        total_slots = 0
+        present_slots = 0
         model_state = "missing"
-        try:
-            if predictor.load_trained_model(nid):
-                loaded_models += 1
-                pred_series = predictor.predict(
-                    node_id=nid,
-                    target_index=target_index,
-                    main_grid_load=main_grid_load,
-                    neighboring_pv=None,
-                )
-                pred_series = pd.to_numeric(pred_series, errors="coerce")
-                missing_mask = actual_grid.isna()
-                recovered_series = pred_series.where(missing_mask, 0.0)
-                blended_series = actual_grid.fillna(pred_series)
-                recovered_kwh = kwh_from_15min_grid(recovered_series)
-                blended_kwh = kwh_from_15min_grid(blended_series)
-                model_state = "ok"
-            else:
-                # No model: blended falls back to available actual only.
-                blended_kwh = kwh_from_15min_grid(actual_grid)
-        except Exception:
-            blended_kwh = kwh_from_15min_grid(actual_grid)
-            model_state = "error"
 
-        actual_kwh = kwh_from_15min_grid(actual_grid.fillna(0.0))
+        if nid not in model_cache:
+            try:
+                model_cache[nid] = predictor.load_trained_model(nid)
+            except Exception:
+                model_cache[nid] = False
+        model_loaded = bool(model_cache[nid])
+        if model_loaded:
+            loaded_models += 1
+
+        for date_suffix in dates:
+            day_start = datetime.strptime(f"20{date_suffix}", "%Y%m%d").replace(hour=0, minute=0, second=0, microsecond=0)
+            day_end = day_start.replace(hour=23, minute=59, second=59)
+            target_index = pd.date_range(start=day_start, end=day_end, freq="15min")
+            table = f"site_power_{date_suffix}"
+
+            # Main grid context sampled to daily 15-minute index.
+            try:
+                cursor.execute(f"SELECT ts, Pt FROM {table} WHERE meter_number = %s ORDER BY ts ASC", (1,))
+                root_df = pd.DataFrame(cursor.fetchall())
+                main_grid_load = None
+                if not root_df.empty:
+                    root_df["ts"] = pd.to_datetime(root_df["ts"])
+                    root_series = pd.Series(pd.to_numeric(root_df["Pt"], errors="coerce").values, index=root_df["ts"]).sort_index()
+                    main_grid_load = root_series.reindex(target_index).ffill().fillna(0.0)
+            except Exception:
+                main_grid_load = None
+
+            try:
+                cursor.execute("SELECT ratio FROM meter_info WHERE meter_number = %s", (nid,))
+                ratio_row = cursor.fetchone()
+                ratio = float(ratio_row["ratio"]) if ratio_row and ratio_row.get("ratio") is not None else 1.0
+
+                cursor.execute(f"SELECT ts, Pt FROM {table} WHERE meter_number = %s ORDER BY ts ASC", (nid,))
+                raw_df = pd.DataFrame(cursor.fetchall())
+                actual_grid = to_15min_actual_grid(raw_df, target_index=target_index, ratio=ratio)
+            except Exception:
+                actual_grid = pd.Series(index=target_index, dtype=float)
+
+            total_slots += len(actual_grid.index)
+            present_slots += int(actual_grid.notna().sum())
+
+            day_recovered_kwh = 0.0
+            day_blended_kwh = kwh_from_15min_grid(actual_grid)
+            day_model_state = "missing"
+            if model_loaded:
+                try:
+                    pred_series = predictor.predict(
+                        node_id=nid,
+                        target_index=target_index,
+                        main_grid_load=main_grid_load,
+                        neighboring_pv=None,
+                    )
+                    pred_series = pd.to_numeric(pred_series, errors="coerce")
+                    missing_mask = actual_grid.isna()
+                    recovered_series = pred_series.where(missing_mask, 0.0)
+                    blended_series = actual_grid.fillna(pred_series)
+                    day_recovered_kwh = kwh_from_15min_grid(recovered_series)
+                    day_blended_kwh = kwh_from_15min_grid(blended_series)
+                    day_model_state = "ok"
+                except Exception:
+                    day_model_state = "error"
+
+            actual_kwh += kwh_from_15min_grid(actual_grid.fillna(0.0))
+            recovered_kwh += day_recovered_kwh
+            blended_kwh += day_blended_kwh
+            if day_model_state == "error":
+                model_state = "error"
+            elif day_model_state == "ok" and model_state != "error":
+                model_state = "ok"
+
+        health = float((present_slots / total_slots) * 100.0) if total_slots else 0.0
         total_actual_kwh += actual_kwh
         total_ai_recovered_kwh += recovered_kwh
         total_blended_kwh += blended_kwh
@@ -226,7 +251,7 @@ def main(date_suffix, model_dir=None, open_browser=True):
             <header class="bg-white p-8 rounded-2xl shadow-sm border border-slate-200 flex justify-between items-center">
                 <div>
                     <h1 class="text-3xl font-black">End Meter AI Spending / 末端电表AI电量</h1>
-                    <p class="text-slate-500 font-medium italic mt-1">Date / 日期: <span class="font-mono">20{date_suffix}</span> • AI Model Comparison / AI模型对比</p>
+                    <p class="text-slate-500 font-medium italic mt-1">{days}-Day Window / {days}天窗口 • Start: <span class="font-mono">20{start_date}</span> • AI Model Comparison / AI模型对比</p>
                 </div>
                 <div class="text-right">
                     <div class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Models Loaded / 已加载模型</div>
@@ -299,8 +324,9 @@ def main(date_suffix, model_dir=None, open_browser=True):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--date", type=str, default="260301", help="Target date (YYMMDD)")
+    parser.add_argument("--start", type=str, default="260301", help="Start date (YYMMDD)")
+    parser.add_argument("--days", type=int, default=7, help="Number of days")
     parser.add_argument("--model-dir", type=str, default=None, help="Optional model artifacts directory")
     parser.add_argument("--no-browser", action="store_true", help="Do not open browser after generating")
     args = parser.parse_args()
-    main(args.date, model_dir=args.model_dir, open_browser=not args.no_browser)
+    main(args.start, days=max(1, int(args.days)), model_dir=args.model_dir, open_browser=not args.no_browser)

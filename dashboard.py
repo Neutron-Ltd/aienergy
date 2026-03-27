@@ -69,8 +69,8 @@ REPORT_TYPES = {
     },
     "meters_ai": {
         "script": "nodes/endmetersai.py",
-        "pattern": re.compile(r"^endmetersai-(\d{6})\.html$"),
-        "value_groups": 1,
+        "pattern": re.compile(r"^endmetersai-(\d{6})-(\d+)d\.html$"),
+        "value_groups": 2,
         "label_en": "AI",
         "label_zh": "AI预测",
     },
@@ -254,7 +254,7 @@ def _expected_filename(report_type: str, start: str, days: int) -> str:
     if report_type == "meters_matrix":
         return f"endmeters-{start}.html"
     if report_type == "meters_ai":
-        return f"endmetersai-{start}.html"
+        return f"endmetersai-{start}-{days}d.html"
     if report_type == "meters_data":
         return f"endmetersdata-{start}-{days}d.html"
     if report_type == "meters_use":
@@ -271,8 +271,10 @@ def _expected_filename(report_type: str, start: str, days: int) -> str:
 def _build_analyze_command(report_type: str, start: str, days: int) -> list:
     script_path = PROJECT_ROOT / REPORT_TYPES[report_type]["script"]
     cmd = [sys.executable, str(script_path)]
-    if report_type in {"meters_matrix", "meters_ai"}:
+    if report_type == "meters_matrix":
         cmd.extend(["--date", str(start), "--no-browser"])
+    elif report_type == "meters_ai":
+        cmd.extend(["--start", str(start), "--days", str(days), "--no-browser"])
     else:
         cmd.extend(["--start", str(start), "--days", str(days), "--no-browser"])
     if report_type == "report":
@@ -327,8 +329,8 @@ def api_analyze():
     if not script_path.exists():
         return jsonify({"success": False, "error": f"Script not found: {script_path}"}), 500
 
-    # Single-day matrix ignores days in script; still use start as YYMMDD
-    effective_days = 1 if report_type in {"meters_matrix", "meters_ai"} else max(1, min(30, days))
+    # Single-day matrix ignores days in script; AI supports multi-day.
+    effective_days = 1 if report_type == "meters_matrix" else max(1, min(30, days))
 
     cmd = _build_analyze_command(report_type, start, effective_days)
 

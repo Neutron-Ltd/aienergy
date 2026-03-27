@@ -251,7 +251,7 @@
         }
 
         function updateDaysVisibility() {
-            const singleDay = currentType === 'meters_matrix' || currentType === 'meters_ai';
+            const singleDay = currentType === 'meters_matrix';
             if (singleDay) {
                 daysWrap.classList.add('opacity-40', 'pointer-events-none');
                 daysWrap.title = 'Single-day report / 单日报告 — Days not used';
@@ -319,7 +319,7 @@
             const dateMatch = startValue.match(/^(\d{4})-(\d{2})-(\d{2})$/);
             const start = dateMatch ? dateMatch[1].slice(2) + dateMatch[2] + dateMatch[3] : '';
             let days = parseInt(daysInput.value, 10) || 7;
-            if (currentType === 'meters_matrix' || currentType === 'meters_ai') days = 1;
+            if (currentType === 'meters_matrix') days = 1;
             if (!start) {
                 setStatus('Please select a valid start date', true);
                 return;
