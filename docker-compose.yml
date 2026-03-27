@@ -17,6 +17,7 @@ services:
       MODEL_ARTIFACT_DIR: /app/model_artifacts
     volumes:
       - ./model_artifacts:/app/model_artifacts
+      - ./nodes/data:/app/nodes/data
     extra_hosts:
       - "host.docker.internal:host-gateway"
     command: >

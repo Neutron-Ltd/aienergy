@@ -48,19 +48,28 @@ def get_end_meters(node, end_meter_list=None):
     return end_meter_list
 
 
-def integrate_daily_kwh(df: pd.DataFrame, ratio: float) -> tuple[float, float]:
-    """Match endmetersuse integration logic using raw sampling interval."""
-    if df.empty:
-        return 0.0, 0.0
-    tmp = df.copy()
-    tmp["ts"] = pd.to_datetime(tmp["ts"])
-    median_int = tmp["ts"].diff().dt.total_seconds().median() / 60 or 15
-    if median_int <= 0:
-        median_int = 15
-    daily_kwh = (pd.to_numeric(tmp["Pt"], errors="coerce").fillna(0.0).sum() * ratio) * (median_int / 60.0)
-    exp_count = max(1, int(1440 // median_int))
-    health = (len(tmp) / exp_count) * 100.0
-    return float(daily_kwh), float(health)
+def kwh_from_15min_grid(series: pd.Series) -> float:
+    """Fixed-interval kWh integration for 15-minute Pt grid."""
+    if series.empty:
+        return 0.0
+    return float(pd.to_numeric(series, errors="coerce").fillna(0.0).sum() * (15.0 / 60.0))
+
+
+def to_15min_actual_grid(raw_df: pd.DataFrame, target_index: pd.DatetimeIndex, ratio: float) -> pd.Series:
+    """Resample raw meter Pt into strict 15-minute mean slots, NaN if empty."""
+    if raw_df.empty:
+        return pd.Series(index=target_index, dtype=float)
+
+    tmp = raw_df.copy()
+    tmp["ts"] = pd.to_datetime(tmp["ts"], errors="coerce")
+    tmp["Pt"] = pd.to_numeric(tmp["Pt"], errors="coerce") * float(ratio)
+    tmp = tmp.dropna(subset=["ts"]).set_index("ts").sort_index()
+    if tmp.empty:
+        return pd.Series(index=target_index, dtype=float)
+
+    # Mean within each 15-minute slot; empty slots remain NaN after reindex.
+    slot_mean = tmp["Pt"].resample("15min").mean()
+    return slot_mean.reindex(target_index)
 
 
 def main(date_suffix, model_dir=None, open_browser=True):
@@ -112,8 +121,9 @@ def main(date_suffix, model_dir=None, open_browser=True):
         return
 
     rows = []
-    total_actual_kwh = 0.0
-    total_pred_kwh = 0.0
+    total_actual_kwh = 0.0          # sum of available actual-only slots
+    total_ai_recovered_kwh = 0.0    # sum of AI only on missing slots
+    total_blended_kwh = 0.0         # actual.fillna(predicted)
     loaded_models = 0
 
     for node in end_nodes:
@@ -125,13 +135,14 @@ def main(date_suffix, model_dir=None, open_browser=True):
 
             cursor.execute(f"SELECT ts, Pt FROM {table} WHERE meter_number = %s ORDER BY ts ASC", (nid,))
             raw_df = pd.DataFrame(cursor.fetchall())
-            actual_kwh, health = integrate_daily_kwh(raw_df, ratio=ratio)
+            actual_grid = to_15min_actual_grid(raw_df, target_index=target_index, ratio=ratio)
+            health = float(actual_grid.notna().mean() * 100.0) if len(actual_grid.index) else 0.0
         except Exception:
-            raw_df = pd.DataFrame(columns=["ts", "Pt"])
-            actual_kwh = 0.0
+            actual_grid = pd.Series(index=target_index, dtype=float)
             health = 0.0
 
-        pred_kwh = 0.0
+        recovered_kwh = 0.0
+        blended_kwh = 0.0
         model_state = "missing"
         try:
             if predictor.load_trained_model(nid):
@@ -142,24 +153,35 @@ def main(date_suffix, model_dir=None, open_browser=True):
                     main_grid_load=main_grid_load,
                     neighboring_pv=None,
                 )
-                pred_kwh = float(pd.to_numeric(pred_series, errors="coerce").fillna(0.0).sum() * (15 / 60.0))
+                pred_series = pd.to_numeric(pred_series, errors="coerce")
+                missing_mask = actual_grid.isna()
+                recovered_series = pred_series.where(missing_mask, 0.0)
+                blended_series = actual_grid.fillna(pred_series)
+                recovered_kwh = kwh_from_15min_grid(recovered_series)
+                blended_kwh = kwh_from_15min_grid(blended_series)
                 model_state = "ok"
+            else:
+                # No model: blended falls back to available actual only.
+                blended_kwh = kwh_from_15min_grid(actual_grid)
         except Exception:
-            pred_kwh = 0.0
+            blended_kwh = kwh_from_15min_grid(actual_grid)
             model_state = "error"
 
+        actual_kwh = kwh_from_15min_grid(actual_grid.fillna(0.0))
         total_actual_kwh += actual_kwh
-        total_pred_kwh += pred_kwh
+        total_ai_recovered_kwh += recovered_kwh
+        total_blended_kwh += blended_kwh
         rows.append({
             "id": nid,
             "name": node["name"],
             "actual_kwh": actual_kwh,
-            "pred_kwh": pred_kwh,
+            "recovered_kwh": recovered_kwh,
+            "blended_kwh": blended_kwh,
             "health": health,
             "model_state": model_state,
         })
 
-    variance_pct = ((total_pred_kwh - total_actual_kwh) / total_actual_kwh * 100.0) if total_actual_kwh > 0 else 0.0
+    variance_pct = ((total_blended_kwh - total_actual_kwh) / total_actual_kwh * 100.0) if total_actual_kwh > 0 else 0.0
     variance_color = "text-rose-600" if variance_pct > 0 else "text-emerald-600"
     variance_sign = "+" if variance_pct > 0 else ""
 
@@ -178,7 +200,8 @@ def main(date_suffix, model_dir=None, open_browser=True):
             <td class="p-3 border-b text-[10px] text-slate-500 font-mono">ID:{r['id']}</td>
             <td class="p-3 border-b text-xs font-semibold text-slate-700">{r['name']}</td>
             <td class="p-3 border-b text-right text-xs font-bold text-slate-800">{r['actual_kwh']:,.1f}</td>
-            <td class="p-3 border-b text-right text-xs font-bold text-indigo-600">{r['pred_kwh']:,.1f}</td>
+            <td class="p-3 border-b text-right text-xs font-bold text-indigo-600">{r['recovered_kwh']:,.1f}</td>
+            <td class="p-3 border-b text-right text-xs font-bold text-slate-900">{r['blended_kwh']:,.1f}</td>
             <td class="p-3 border-b text-center text-[10px]"><span class="{health_color} font-mono">{r['health']:.0f}%</span></td>
             <td class="p-3 border-b text-center">{model_badge}</td>
         </tr>
@@ -217,19 +240,26 @@ def main(date_suffix, model_dir=None, open_browser=True):
                     <div class="text-3xl font-black text-slate-800 mt-1">{total_actual_kwh:,.1f} <span class="text-sm font-light text-slate-400">kWh</span></div>
                 </div>
                 <div class="bg-slate-900 p-6 rounded-2xl shadow-xl text-white">
-                    <span class="text-[10px] font-bold text-indigo-300 uppercase tracking-widest text-opacity-80">AI Predicted Spending / AI预测总用电</span>
-                    <div class="text-3xl font-black mt-1">{total_pred_kwh:,.1f} <span class="text-sm font-light text-slate-400">kWh</span></div>
+                    <span class="text-[10px] font-bold text-indigo-300 uppercase tracking-widest text-opacity-80">AI Recovered Missing / AI补全缺失</span>
+                    <div class="text-3xl font-black mt-1">{total_ai_recovered_kwh:,.1f} <span class="text-sm font-light text-slate-400">kWh</span></div>
                 </div>
                 <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
-                    <span class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Prediction Variance / 预测偏差</span>
-                    <div class="text-3xl font-black mt-1 {variance_color}">{variance_sign}{variance_pct:.1f}%</div>
+                    <span class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Total Blended / 最终合并总量</span>
+                    <div class="text-3xl font-black mt-1 text-slate-900">{total_blended_kwh:,.1f} <span class="text-sm font-light text-slate-400">kWh</span></div>
+                    <div class="text-xs mt-1 {variance_color}">vs Actual: {variance_sign}{variance_pct:.1f}%</div>
                 </div>
+            </div>
+
+            <div class="bg-white p-4 rounded-2xl shadow-sm border border-slate-200">
+                <span class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Blend Rule / 合并规则</span>
+                <div class="font-mono text-xs text-slate-600 mt-1">blended = actual.fillna(predicted)</div>
+                <div class="font-mono text-xs text-slate-500 mt-1">kWh = sum(Pt_15min) * (15/60)</div>
             </div>
 
             <section class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
                 <div class="bg-slate-900 p-4 text-white flex justify-between items-center">
                     <h3 class="font-bold text-xs uppercase tracking-widest">Actual vs AI by End Meter / 每台设备实际与预测</h3>
-                    <span class="text-[10px] text-slate-400 font-mono">Columns: node, machine name, actual use, AI prediction</span>
+                    <span class="text-[10px] text-slate-400 font-mono">Columns: actual, AI-recovered, total blended</span>
                 </div>
                 <div class="overflow-x-auto">
                     <table class="w-full text-left border-collapse min-w-max">
@@ -237,8 +267,9 @@ def main(date_suffix, model_dir=None, open_browser=True):
                             <tr>
                                 <th class="p-3 border-b text-xs font-bold text-slate-500 bg-slate-50 w-16">Node / 节点</th>
                                 <th class="p-3 border-b text-xs font-bold text-slate-500 bg-slate-50">Machine Name / 设备名称</th>
-                                <th class="p-3 border-b text-xs font-bold text-slate-500 bg-slate-50 text-right">Actual Use / 实际用电 (kWh)</th>
-                                <th class="p-3 border-b text-xs font-bold text-slate-500 bg-slate-50 text-right">AI Prediction / AI预测 (kWh)</th>
+                                <th class="p-3 border-b text-xs font-bold text-slate-500 bg-slate-50 text-right">Actual (kWh)</th>
+                                <th class="p-3 border-b text-xs font-bold text-slate-500 bg-slate-50 text-right">AI-Recovered (kWh)</th>
+                                <th class="p-3 border-b text-xs font-bold text-slate-500 bg-slate-50 text-right">Total Blended (kWh)</th>
                                 <th class="p-3 border-b text-xs font-bold text-slate-500 bg-slate-50 text-center">Data Health / 数据完整度</th>
                                 <th class="p-3 border-b text-xs font-bold text-slate-500 bg-slate-50 text-center">Model / 模型</th>
                             </tr>
