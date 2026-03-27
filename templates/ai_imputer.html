@@ -86,11 +86,11 @@
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
                             <div class="rounded-lg border border-slate-200 bg-slate-50 p-3">
                                 <p class="font-semibold text-slate-900">Feature Strategy (EN)</p>
-                                <p class="mt-1 text-slate-600">PV uses daylight constraints and neighboring PV context; load nodes use hour/day/week patterns plus main-grid context; storage uses schedule-like charge/discharge time windows.</p>
+                                <p class="mt-1 text-slate-600">Models are optimized exclusively for Load Nodes (end-meters). They use cyclical time features (hour/day) combined with the real-time Main Grid load context. Generation (PV) and Storage nodes are bypassed by the AI to preserve grid topology balance.</p>
                             </div>
                             <div class="rounded-lg border border-slate-200 bg-slate-50 p-3">
                                 <p class="font-semibold text-slate-900">特征策略 (中文)</p>
-                                <p class="mt-1 text-slate-600">光伏节点结合白天约束和邻近光伏上下文；负载节点结合小时/星期规律与主电网负载；储能节点结合充放电时段特征。</p>
+                                <p class="mt-1 text-slate-600">模型专为负载节点（末端电表）优化。特征结合了周期性时间规律（小时/星期）与主电网的实时负载上下文。为保持电网拓扑计算的物理平衡，AI将自动跳过发电（光伏）与储能节点。</p>
                             </div>
                             <div class="rounded-lg border border-slate-200 bg-slate-50 p-3">
                                 <p class="font-semibold text-slate-900">Model Selection (EN)</p>
