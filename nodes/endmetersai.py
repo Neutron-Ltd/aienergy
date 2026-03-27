@@ -80,7 +80,7 @@ def generate_date_range(start_date_str, days=7):
 
 def main(start_date, days=7, model_dir=None, open_browser=True):
     report_file = os.path.join(OUTPUT_DIR, f"endmetersai-{start_date}-{days}d.html")
-    print(f"Starting End Meter AI Prediction for 20{start_date}, {days} day(s)...")
+    print(f"Starting End Meter ML Prediction for 20{start_date}, {days} day(s)...")
     artifacts_dir = Path(model_dir).resolve() if model_dir else (_ROOT / "model_artifacts").resolve()
     os.environ["MODEL_ARTIFACT_DIR"] = str(artifacts_dir)
     print(f"Model artifacts directory: {artifacts_dir}")
@@ -243,7 +243,7 @@ def main(start_date, days=7, model_dir=None, open_browser=True):
     <!DOCTYPE html>
     <html lang="en">
     <head>
-        <meta charset="UTF-8"><title>AIENERGY - End Meter AI / 末端电表AI预测</title>
+        <meta charset="UTF-8"><title>MLENERGY - End Meter ML / 末端电表ML预测</title>
         <script src="https://cdn.tailwindcss.com"></script>
         <style>
             ::-webkit-scrollbar {{ width: 8px; height: 8px; }}
@@ -257,8 +257,8 @@ def main(start_date, days=7, model_dir=None, open_browser=True):
         <div class="max-w-[1400px] mx-auto mt-8 px-6 space-y-8">
             <header class="bg-white p-8 rounded-2xl shadow-sm border border-slate-200 flex justify-between items-center">
                 <div>
-                    <h1 class="text-3xl font-black">End Meter AI Spending / 末端电表AI电量</h1>
-                    <p class="text-slate-500 font-medium italic mt-1">{days}-Day Window / {days}天窗口 • Start: <span class="font-mono">20{start_date}</span> • AI Model Comparison / AI模型对比</p>
+                    <h1 class="text-3xl font-black">End Meter ML Spending / 末端电表ML电量</h1>
+                    <p class="text-slate-500 font-medium italic mt-1">{days}-Day Window / {days}天窗口 • Start: <span class="font-mono">20{start_date}</span> • ML Model Comparison / ML模型对比</p>
                 </div>
                 <div class="text-right">
                     <div class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Models Loaded / 已加载模型</div>
@@ -272,7 +272,7 @@ def main(start_date, days=7, model_dir=None, open_browser=True):
                     <div class="text-3xl font-black text-slate-800 mt-1">{total_actual_kwh:,.1f} <span class="text-sm font-light text-slate-400">kWh</span></div>
                 </div>
                 <div class="bg-slate-900 p-6 rounded-2xl shadow-xl text-white">
-                    <span class="text-[10px] font-bold text-indigo-300 uppercase tracking-widest text-opacity-80">AI Recovered Missing / AI补全缺失</span>
+                    <span class="text-[10px] font-bold text-indigo-300 uppercase tracking-widest text-opacity-80">ML Recovered Missing / ML补全缺失</span>
                     <div class="text-3xl font-black mt-1">{total_ai_recovered_kwh:,.1f} <span class="text-sm font-light text-slate-400">kWh</span></div>
                 </div>
                 <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
@@ -290,8 +290,8 @@ def main(start_date, days=7, model_dir=None, open_browser=True):
 
             <section class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
                 <div class="bg-slate-900 p-4 text-white flex justify-between items-center">
-                    <h3 class="font-bold text-xs uppercase tracking-widest">Actual vs AI by End Meter / 每台设备实际与预测</h3>
-                    <span class="text-[10px] text-slate-400 font-mono">Columns: actual, AI-recovered, total blended</span>
+                    <h3 class="font-bold text-xs uppercase tracking-widest">Actual vs ML by End Meter / 每台设备实际与预测</h3>
+                    <span class="text-[10px] text-slate-400 font-mono">Columns: actual, ML-recovered, total blended</span>
                 </div>
                 <div class="overflow-x-auto">
                     <table class="w-full text-left border-collapse min-w-max">
@@ -300,7 +300,7 @@ def main(start_date, days=7, model_dir=None, open_browser=True):
                                 <th class="p-3 border-b text-xs font-bold text-slate-500 bg-slate-50 w-16">Node / 节点</th>
                                 <th class="p-3 border-b text-xs font-bold text-slate-500 bg-slate-50">Machine Name / 设备名称</th>
                                 <th class="p-3 border-b text-xs font-bold text-slate-500 bg-slate-50 text-right">Actual (kWh)</th>
-                                <th class="p-3 border-b text-xs font-bold text-slate-500 bg-slate-50 text-right">AI-Recovered (kWh)</th>
+                                <th class="p-3 border-b text-xs font-bold text-slate-500 bg-slate-50 text-right">ML-Recovered (kWh)</th>
                                 <th class="p-3 border-b text-xs font-bold text-slate-500 bg-slate-50 text-right">Total Blended (kWh)</th>
                                 <th class="p-3 border-b text-xs font-bold text-slate-500 bg-slate-50 text-center">Data Health / 数据完整度</th>
                                 <th class="p-3 border-b text-xs font-bold text-slate-500 bg-slate-50 text-center">Model / 模型</th>
@@ -311,7 +311,7 @@ def main(start_date, days=7, model_dir=None, open_browser=True):
                 </div>
             </section>
 
-            <footer class="text-center text-slate-400 text-[10px] py-4">Generated by AIENERGY System / AI能源系统生成 • End Meter AI Report / 末端电表AI报告</footer>
+            <footer class="text-center text-slate-400 text-[10px] py-4">Generated by MLENERGY System / 机器学习能源系统生成 • End Meter ML Report / 末端电表ML报告</footer>
         </div>
     </body>
     </html>
@@ -323,7 +323,7 @@ def main(start_date, days=7, model_dir=None, open_browser=True):
         conn.close()
     except Exception:
         pass
-    print(f"✅ End Meter AI report generated: {report_file}")
+    print(f"✅ End Meter ML report generated: {report_file}")
     if open_browser:
         webbrowser.open(Path(report_file).resolve().as_uri())
     return report_file
