@@ -36,7 +36,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent
 NODES_DIR = PROJECT_ROOT / "nodes"
 DATA_DIR = NODES_DIR / "data"
 MODEL_DIR = PROJECT_ROOT / "model"
-MODEL_ARTIFACTS_DIR = PROJECT_ROOT / "model_artifacts"
+MODEL_ARTIFACTS_DIR = PROJECT_ROOT / "LinearRegression"
 MODEL_META_PATH = MODEL_ARTIFACTS_DIR / "model_meta.json"
 
 # Login (override with environment variables in production)
@@ -282,7 +282,7 @@ def _build_analyze_command(report_type: str, start: str, days: int) -> list:
     return cmd
 
 
-def _resolve_model_artifacts_dir(value: str | None) -> Path:
+def _resolve_linear_regression_dir(value: str | None) -> Path:
     txt = str(value or "").strip()
     if not txt:
         return MODEL_ARTIFACTS_DIR
@@ -290,6 +290,18 @@ def _resolve_model_artifacts_dir(value: str | None) -> Path:
     if not candidate.is_absolute():
         candidate = (PROJECT_ROOT / candidate).resolve()
     return candidate.resolve()
+
+
+def _analysis_timeout_seconds(report_type: str) -> int:
+    """Resolve per-report analysis timeout with safe defaults."""
+    default_seconds = 1200 if report_type == "meters_ai" else 300
+    raw = os.environ.get("ANALYZE_TIMEOUT_SECONDS", "").strip()
+    if raw:
+        try:
+            return max(60, int(raw))
+        except ValueError:
+            return default_seconds
+    return default_seconds
 
 
 @app.route("/")
@@ -342,10 +354,11 @@ def api_analyze():
         else pr
     )
     if report_type == "meters_ai":
-        model_dir = _resolve_model_artifacts_dir(data.get("model_dir"))
+        model_dir = _resolve_linear_regression_dir(data.get("model_dir"))
         if not model_dir.exists() or not model_dir.is_dir():
             return jsonify({"success": False, "error": f"Model directory not found: {model_dir}"}), 400
         sub_env["MODEL_ARTIFACT_DIR"] = str(model_dir)
+    timeout_seconds = _analysis_timeout_seconds(report_type)
     try:
         result = subprocess.run(
             cmd,
@@ -353,7 +366,7 @@ def api_analyze():
             env=sub_env,
             capture_output=True,
             text=True,
-            timeout=300,
+            timeout=timeout_seconds,
         )
         if result.returncode != 0:
             return jsonify({
@@ -374,7 +387,13 @@ def api_analyze():
             "path": filename,
         })
     except subprocess.TimeoutExpired:
-        return jsonify({"success": False, "error": "Analysis timed out"}), 500
+        return jsonify({
+            "success": False,
+            "error": (
+                f"Analysis timed out after {timeout_seconds}s. "
+                "Increase ANALYZE_TIMEOUT_SECONDS or reduce analysis range."
+            ),
+        }), 500
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
 

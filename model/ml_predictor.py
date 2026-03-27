@@ -43,7 +43,7 @@ class NodeAwareMLPredictor:
     def __init__(self, topology: TopologyEngine, meta_path: str | Path | None = None) -> None:
         self.topology = topology
         self._models: Dict[int, TrainedModel] = {}
-        self.artifacts_dir = Path(os.environ.get("MODEL_ARTIFACT_DIR", "/app/model_artifacts")).resolve()
+        self.artifacts_dir = Path(os.environ.get("MODEL_ARTIFACT_DIR", "/app/LinearRegression")).resolve()
         os.makedirs(self.artifacts_dir, exist_ok=True)
         self._ensure_artifacts_writable()
         self.meta_path = Path(meta_path) if meta_path else self.artifacts_dir / "model_meta.json"
@@ -60,7 +60,7 @@ class NodeAwareMLPredictor:
         except PermissionError as exc:
             raise PermissionError(
                 f"Artifact directory is not writable: {self.artifacts_dir}. "
-                "Check docker volume permissions for ./model_artifacts -> /app/model_artifacts."
+                "Check docker volume permissions for ./LinearRegression -> /app/LinearRegression."
             ) from exc
 
     def _model_file_path(self, node_id: int) -> Path:
@@ -93,7 +93,7 @@ class NodeAwareMLPredictor:
         print(f"[NodeAwareMLPredictor] Artifacts directory: {self.artifacts_dir}")
 
     def load_trained_model(self, node_id: int) -> bool:
-        """Load a persisted model for a node from model_artifacts directory."""
+        """Load a persisted model for a node from LinearRegression directory."""
         model_path = self._model_file_path(node_id)
         sidecar_path = self._model_sidecar_path(node_id)
         if not model_path.exists() or not sidecar_path.exists():

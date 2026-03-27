@@ -14,13 +14,13 @@ services:
       MYSQL_USER: ${MYSQL_USER:-energy_user}
       MYSQL_PASSWORD: ${MYSQL_PASSWORD:-REDACTED}
       MYSQL_DATABASE: ${MYSQL_DATABASE:-unified}
-      MODEL_ARTIFACT_DIR: /app/model_artifacts
+      MODEL_ARTIFACT_DIR: /app/LinearRegression
     volumes:
-      - ./model_artifacts:/app/model_artifacts
+      - ./LinearRegression:/app/LinearRegression
       - ./nodes/data:/app/nodes/data
     extra_hosts:
       - "host.docker.internal:host-gateway"
     command: >
-      sh -c "mkdir -p /app/model_artifacts &&
-             chmod -R 777 /app/model_artifacts &&
+      sh -c "mkdir -p /app/LinearRegression &&
+             chmod -R 777 /app/LinearRegression &&
              python dashboard.py"

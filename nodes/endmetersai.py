@@ -81,7 +81,7 @@ def generate_date_range(start_date_str, days=7):
 def main(start_date, days=7, model_dir=None, open_browser=True):
     report_file = os.path.join(OUTPUT_DIR, f"endmetersai-{start_date}-{days}d.html")
     print(f"Starting End Meter ML Prediction for 20{start_date}, {days} day(s)...")
-    artifacts_dir = Path(model_dir).resolve() if model_dir else (_ROOT / "model_artifacts").resolve()
+    artifacts_dir = Path(model_dir).resolve() if model_dir else (_ROOT / "LinearRegression").resolve()
     os.environ["MODEL_ARTIFACT_DIR"] = str(artifacts_dir)
     print(f"Model artifacts directory: {artifacts_dir}")
     dates = generate_date_range(start_date, days)
