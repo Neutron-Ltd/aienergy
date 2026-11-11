@@ -3,13 +3,14 @@ AI Energy Dashboard - Flask app and entry point
 Run: python dashboard.py
 Serves the dashboard UI and API for running analyses and viewing report history.
 
-Auth: set AIENERGY_USER / AIENERGY_PASSWORD (optional) and FLASK_SECRET_KEY for production.
+Auth: set AIENERGY_USER / AIENERGY_PASSWORD and FLASK_SECRET_KEY (see .env.example).
 """
 
 import hmac
 import json
 import os
 import re
+import secrets
 import subprocess
 import sys
 import threading
@@ -39,9 +40,12 @@ MODEL_DIR = PROJECT_ROOT / "model"
 MODEL_ARTIFACTS_DIR = PROJECT_ROOT / "LinearRegression"
 MODEL_META_PATH = MODEL_ARTIFACTS_DIR / "model_meta.json"
 
-# Login (override with environment variables in production)
+# Login. If AIENERGY_PASSWORD is not set, a random password is generated and printed at startup.
 DASHBOARD_USER = os.environ.get("AIENERGY_USER", "aienergy")
-DASHBOARD_PASSWORD = os.environ.get("AIENERGY_PASSWORD", "REDACTED")
+DASHBOARD_PASSWORD = os.environ.get("AIENERGY_PASSWORD") or ""
+_GENERATED_PASSWORD = not DASHBOARD_PASSWORD
+if _GENERATED_PASSWORD:
+    DASHBOARD_PASSWORD = secrets.token_urlsafe(12)
 
 # Report type config
 # value_groups: 2 = regex captures (start, days), 1 = only start (days fixed at 1 for UI)
@@ -98,10 +102,8 @@ REPORT_TYPES = {
 }
 
 app = Flask(__name__, template_folder=str(PROJECT_ROOT / "templates"))
-app.secret_key = os.environ.get(
-    "FLASK_SECRET_KEY",
-    "dev-aienergy-secret-change-with-FLASK_SECRET_KEY-in-production",
-)
+# Without FLASK_SECRET_KEY, a random key is used and sessions reset on every restart.
+app.secret_key = os.environ.get("FLASK_SECRET_KEY") or secrets.token_hex(32)
 app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(days=7)
 
 
@@ -288,8 +290,12 @@ def _resolve_linear_regression_dir(value: str | None) -> Path:
         return MODEL_ARTIFACTS_DIR
     candidate = Path(txt)
     if not candidate.is_absolute():
-        candidate = (PROJECT_ROOT / candidate).resolve()
-    return candidate.resolve()
+        candidate = PROJECT_ROOT / candidate
+    candidate = candidate.resolve()
+    # Only allow model directories inside the project folder.
+    if not candidate.is_relative_to(PROJECT_ROOT.resolve()):
+        return PROJECT_ROOT / "__invalid_model_dir__"
+    return candidate
 
 
 def _analysis_timeout_seconds(report_type: str) -> int:
@@ -610,6 +616,8 @@ if __name__ == "__main__":
     print("  AI Energy Dashboard / 智能能源")
     print("=" * 50)
     print(f"  {url}")
+    if _GENERATED_PASSWORD:
+        print(f"  AIENERGY_PASSWORD not set. Generated login: {DASHBOARD_USER} / {DASHBOARD_PASSWORD}")
     print("=" * 50)
     print("  Press Ctrl+C to stop")
     print()

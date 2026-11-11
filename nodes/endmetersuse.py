@@ -11,7 +11,7 @@ from datetime import datetime, timedelta
 _ROOT = Path(__file__).resolve().parents[1]
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
-from db.mysql_env import mysql_connect_kwargs
+from db.mysql_env import TABLE_PREFIX, mysql_connect_kwargs
 
 DB_CONFIG = mysql_connect_kwargs()
 
@@ -75,7 +75,7 @@ def main(start_date, days, open_browser=True):
 
     for date_str in dates:
         print(f"⌛ Processing 20{date_str}...")
-        table = f"site_power_{date_str}"
+        table = f"{TABLE_PREFIX}_power_{date_str}"
         for meter in end_meters:
             mid = meter['id']
             # Fetch Ratio

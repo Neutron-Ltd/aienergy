@@ -1,3 +1,16 @@
 .DS_Store
-__pycache__
+__pycache__/
+*.py[cod]
+.venv/
 .env
+
+# Site-specific data: never commit
+relation.json
+relation.html
+column.json
+LinearRegression/
+model_artifacts/
+nodes/data/
+db/data/
+*.sql
+*.joblib

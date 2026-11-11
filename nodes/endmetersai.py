@@ -13,7 +13,7 @@ _ROOT = Path(__file__).resolve().parents[1]
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
-from db.mysql_env import mysql_connect_kwargs
+from db.mysql_env import TABLE_PREFIX, mysql_connect_kwargs
 from model.db_handler import DBHandler
 from model.ml_predictor import NodeAwareMLPredictor
 from model.topology_engine import TopologyEngine
@@ -137,7 +137,7 @@ def main(start_date, days=7, model_dir=None, open_browser=True):
             day_start = datetime.strptime(f"20{date_suffix}", "%Y%m%d").replace(hour=0, minute=0, second=0, microsecond=0)
             day_end = day_start.replace(hour=23, minute=59, second=59)
             target_index = pd.date_range(start=day_start, end=day_end, freq="15min")
-            table = f"site_power_{date_suffix}"
+            table = f"{TABLE_PREFIX}_power_{date_suffix}"
 
             # Main grid context sampled to daily 15-minute index.
             try:

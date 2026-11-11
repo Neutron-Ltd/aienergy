@@ -6,3 +6,6 @@ __pycache__
 .venv
 .env
 .DS_Store
+nodes/data
+db/data
+LinearRegression

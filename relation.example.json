@@ -1,0 +1,40 @@
+{
+  "system_name": "Power Grid Monitoring",
+  "root_node": {
+    "id": 1,
+    "name": "Utility Grid Main Meter",
+    "sub_nodes": [
+      {
+        "id": 2,
+        "name": "Transformer 1 Output",
+        "category": "transformer",
+        "sub_nodes": [
+          {
+            "id": 3,
+            "name": "Distribution Hub A",
+            "category": "distribution_hub",
+            "sub_nodes": [
+              { "id": 101, "name": "Production Line 1", "category": "production_line" },
+              { "id": 102, "name": "Workshop Lighting", "category": "lighting" },
+              { "id": 103, "name": "HVAC Unit 1", "category": "ac_unit" }
+            ]
+          },
+          {
+            "id": 4,
+            "name": "Distribution Hub B",
+            "category": "distribution_hub",
+            "sub_nodes": [
+              { "id": 104, "name": "Office Floor 1", "category": "floor_distribution" },
+              { "id": 105, "name": "Elevator 1", "category": "elevator" },
+              { "id": 106, "name": "Server Room", "category": "server_room" }
+            ]
+          }
+        ]
+      },
+      { "id": 29, "name": "Solar PV Array 1", "category": "pv_generation" },
+      { "id": 31, "name": "Solar PV Array 2", "category": "pv_generation" },
+      { "id": 56, "name": "Solar PV Array 3", "category": "pv_generation" },
+      { "id": 30, "name": "Battery Storage", "category": "storage" }
+    ]
+  }
+}

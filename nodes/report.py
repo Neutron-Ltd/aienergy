@@ -23,7 +23,7 @@ from collections import defaultdict
 _ROOT = Path(__file__).resolve().parents[1]
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
-from db.mysql_env import mysql_connect_kwargs
+from db.mysql_env import TABLE_PREFIX, mysql_connect_kwargs
 
 DB_CONFIG = mysql_connect_kwargs()
 
@@ -106,7 +106,7 @@ def fetch_grid_data(cursor, dates, target_id=1):
     gap_days = []
 
     for date_str in dates:
-        table = f"site_energy_{date_str}"
+        table = f"{TABLE_PREFIX}_energy_{date_str}"
         try:
             cursor.execute(
                 f"SELECT ts, ImpEP, ExpEP FROM {table} WHERE meter_number = %s ORDER BY ts ASC",
@@ -169,7 +169,7 @@ def fetch_grid_data(cursor, dates, target_id=1):
     }
 
 
-def fetch_power_based_data(cursor, dates, node_list, table_prefix="site_power"):
+def fetch_power_based_data(cursor, dates, node_list, table_prefix=f"{TABLE_PREFIX}_power"):
     """
     Fetch data from site_power_* using Pt integration (same as solardata/endmetersuse).
     Returns per-day totals and statistics.

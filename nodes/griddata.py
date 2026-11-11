@@ -11,7 +11,7 @@ from datetime import datetime, timedelta
 _ROOT = Path(__file__).resolve().parents[1]
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
-from db.mysql_env import mysql_connect_kwargs
+from db.mysql_env import TABLE_PREFIX, mysql_connect_kwargs
 
 DB_CONFIG = mysql_connect_kwargs()
 
@@ -80,7 +80,7 @@ def main(start_date, days, target_id=1, open_browser=True):
 
         # 2. Fetch Data Day by Day
         for date_str in dates:
-            table_name = f"site_energy_{date_str}"
+            table_name = f"{TABLE_PREFIX}_energy_{date_str}"
             try:
                 query = f"""
                     SELECT ts, ImpEP, ExpEP, TotalEP 

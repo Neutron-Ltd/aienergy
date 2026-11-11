@@ -10,7 +10,7 @@ from datetime import datetime
 _ROOT = Path(__file__).resolve().parents[1]
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
-from db.mysql_env import mysql_connect_kwargs
+from db.mysql_env import TABLE_PREFIX, mysql_connect_kwargs
 
 DB_CONFIG = mysql_connect_kwargs()
 
@@ -120,7 +120,7 @@ def main(date_suffix, open_browser=True):
         conn = mysql.connector.connect(**DB_CONFIG)
         cursor = conn.cursor(dictionary=True)
         
-        power_table = f"site_power_{date_suffix}"
+        power_table = f"{TABLE_PREFIX}_power_{date_suffix}"
         power_cols = get_table_columns(cursor, power_table)
         
         results = []

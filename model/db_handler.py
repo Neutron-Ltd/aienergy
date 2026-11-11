@@ -15,7 +15,7 @@ import mysql.connector
 import pandas as pd
 from mysql.connector.connection import MySQLConnection
 
-from db.mysql_env import mysql_connect_kwargs
+from db.mysql_env import TABLE_PREFIX, mysql_connect_kwargs
 
 
 class DatabaseConnectionError(RuntimeError):
@@ -180,7 +180,7 @@ class DBHandler:
         if metric not in {"power", "energy"}:
             raise ValueError("`metric` must be either 'power' or 'energy'.")
 
-        table_prefix = "site_power" if metric == "power" else "site_energy"
+        table_prefix = f"{TABLE_PREFIX}_power" if metric == "power" else f"{TABLE_PREFIX}_energy"
         value_columns = (
             ["Pt", "Ia", "Ib", "Ic"] if metric == "power" else ["ImpEP", "ExpEP", "TotalEP"]
         )

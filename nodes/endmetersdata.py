@@ -11,7 +11,7 @@ from datetime import datetime, timedelta
 _ROOT = Path(__file__).resolve().parents[1]
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
-from db.mysql_env import mysql_connect_kwargs
+from db.mysql_env import TABLE_PREFIX, mysql_connect_kwargs
 
 DB_CONFIG = mysql_connect_kwargs()
 
@@ -110,7 +110,7 @@ def main(start_date, days, open_browser=True):
         cursor = conn.cursor(dictionary=True)
         
         for date_str in dates:
-            table_name = f"site_power_{date_str}"
+            table_name = f"{TABLE_PREFIX}_power_{date_str}"
             print(f"  > Scanning {table_name}...")
             
             format_strings = ','.join(['%s'] * len(end_meter_ids))
